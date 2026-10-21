@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make verify)",
+      "Bash(make validate-design)",
+      "Bash(make validate-manifest)",
+      "Bash(make lint)",
+      "Bash(make test)",
+      "Bash(python3 scripts/validate_design_artifacts.py*)",
+      "Bash(python3 scripts/validate_pattern_manifest.py*)",
+      "Bash(python3 scripts/check_platform_domain_boundary.py*)",
+      "Bash(terraform fmt -check -recursive*)",
+      "Bash(terraform validate*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr checks*)"
+    ],
+    "deny": [
+      "Bash(terraform apply*)",
+      "Bash(terraform destroy*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh release create*)",
+      "Bash(git push --force*)",
+      "Bash(docker push*)",
+      "Bash(gcloud run deploy*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn_unapproved_implementation.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

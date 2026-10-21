@@ -1,0 +1,28 @@
+# Safe example configuration. Neutral placeholders only -- never a real enterprise
+# identifier, never a secret value.
+
+domain:
+  name: example-domain
+
+rbac:
+  roles:
+    - id: writer-agent
+      permissions: [read, write, correct, list]
+    - id: reader-agent
+      # A read-only role can never be granted write. Enforced, not conventional.
+      permissions: [read, list]
+
+privacy:
+  sensitiveAttributes:
+    - example_sensitive_attribute
+  restrictedAttributes:
+    - example_restricted_attribute
+  categories:
+    - example-category
+
+extensions: {}
+  # Omit an entry to use the platform default. Security-relevant defaults fail closed.
+  # pii-classifier: domain_extensions.pii.Classifier
+
+observability:
+  logLevel: INFO

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# Terraform — lockfiles ARE committed; state and local dirs are not
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Secrets and local config — never commit
+.env
+.env.*
+!.env.example
+*-credentials.json
+*-service-account.json
+sa-key*.json
+
+# Tooling output
+.coverage
+coverage.xml
+htmlcov/
+.DS_Store
+*.log
+sbom.json

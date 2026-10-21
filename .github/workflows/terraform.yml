@@ -1,0 +1,39 @@
+name: Terraform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Format and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: Format check
+        run: terraform fmt -check -recursive patterns templates
+
+      - name: Validate every Terraform directory
+        run: |
+          set -euo pipefail
+          found=0
+          while IFS= read -r dir; do
+            found=1
+            echo "== $dir"
+            terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+            terraform -chdir="$dir" validate
+          done < <(find patterns templates -name '*.tf' -exec dirname {} \; | sort -u)
+          if [ "$found" -eq 0 ]; then
+            echo "No Terraform found — skipped, not passed."
+          fi
+
+      # This repository APPLIES NOTHING. There is deliberately no apply job, no backend
+      # configuration and no cloud credentials in this workflow.

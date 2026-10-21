@@ -1,0 +1,9 @@
+# Pinned pattern dependency. Do not edit by hand -- use the pattern-upgrade workflow.
+# Verified in CI by scripts/verify_pattern_lock.py.
+pattern:
+  name: <pattern-name>
+  version: <x.y.z>
+  source: https://github.com/<org>/geap-platform-services
+  tag: <pattern-name>/v<x.y.z>
+  # sha256 of the released pattern.yaml, to detect drift.
+  manifestDigest: <sha256>

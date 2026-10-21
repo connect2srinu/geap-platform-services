@@ -1,0 +1,43 @@
+name: Pattern contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    name: Manifest and boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r scripts/requirements.txt
+      - name: Validate pattern manifests
+        run: python3 scripts/validate_pattern_manifest.py
+      - name: Platform/domain boundary and layering
+        run: python3 scripts/check_platform_domain_boundary.py
+
+  contracts:
+    name: Contract specifications
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Lint OpenAPI specifications
+        run: |
+          shopt -s nullglob
+          specs=(patterns/*/contracts/openapi.yaml)
+          if [ ${#specs[@]} -eq 0 ]; then
+            echo "No OpenAPI specifications present yet — nothing to lint."
+            echo "This is 'skipped', not 'passed'."
+            exit 0
+          fi
+          npx --yes @redocly/cli@1.25.11 lint "${specs[@]}"

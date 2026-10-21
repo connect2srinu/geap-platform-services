@@ -1,0 +1,99 @@
+# Pattern manifest template. Validated by schemas/pattern.schema.json.
+# Replace every <PLACEHOLDER>. Use neutral identifiers only -- no real enterprise names.
+apiVersion: platform.geap/v1
+kind: Pattern
+
+metadata:
+  name: <pattern-name>
+  version: 0.1.0
+  description: <one sentence, 20-300 characters, describing the capability>
+  maintainer:
+    team: agent-platform
+    contact: <team-contact-placeholder>
+  # Always 'proposed' at creation. Certification is a governance act.
+  status: proposed
+
+spec:
+  runtime:
+    language: python
+    version: "3.12"
+    container:
+      base: <pinned-base-image>
+      port: 8080
+      nonRoot: true
+
+  interfaces:
+    - kind: openapi
+      spec: patterns/<pattern-name>/contracts/openapi.yaml
+      version: v1
+      status: active
+
+  configuration:
+    schema: patterns/<pattern-name>/config/config.schema.json
+    examples:
+      - patterns/<pattern-name>/config/example.domain.yaml
+
+  extensionPoints: []
+    # - id: <extension-id>
+    #   interface: patterns/<pattern-name>/extensions/<name>.py
+    #   required: false
+    #   default: noop
+    #   failureMode: deny     # security-relevant extensions MUST be 'deny'
+    #   description: <what a domain plugs in here>
+
+  secrets: []
+    # - name: <SECRET_NAME>
+    #   purpose: <why it is needed>
+    #   required: true
+
+  cloudPermissions:
+    google:
+      - component: api
+        roles: []
+      - component: worker
+        roles: []
+
+  infrastructure:
+    platformOwned: patterns/<pattern-name>/infrastructure/terraform/platform-owned
+    domainOwned: patterns/<pattern-name>/infrastructure/terraform/domain-runtime
+
+  security:
+    nonOverridableControls:
+      - C-01
+      - C-02
+      - C-06
+      - C-07
+      - C-08
+      - C-11
+      - C-16
+    dataClassification: []
+
+  observability:
+    requiredMetrics:
+      - tool_invocations
+      - tool_latency
+    requiredAuditEvents:
+      - policy_denial
+    prohibitedLogFields:
+      - memory_content
+      - pii
+      - secrets
+      - authorization_header
+
+  build:
+    instructions: patterns/<pattern-name>/README.md
+    dockerfile: patterns/<pattern-name>/examples/Dockerfile
+    # The platform team never builds a domain's image.
+    ownedBy: domain
+
+  tests:
+    unit: patterns/<pattern-name>/tests
+    conformance: patterns/<pattern-name>/conformance
+
+  compatibility:
+    terraform: ">=1.9"
+    google: "~>7.45"
+
+  upgrade:
+    from: []
+    guide: patterns/<pattern-name>/docs/upgrade.md

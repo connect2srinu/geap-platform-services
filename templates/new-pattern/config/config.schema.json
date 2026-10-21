@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "<Pattern Name> domain configuration",
+  "description": "What a consuming domain may configure. Keys that could disable a mandatory control deliberately do not exist -- see standards/configuration.md.",
+  "type": "object",
+  "required": ["domain", "observability"],
+  "additionalProperties": false,
+  "properties": {
+    "domain": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,24}$",
+          "description": "Neutral domain identifier used as a resource prefix."
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "description": "Domain-defined roles and bindings. Read-only roles can never write.",
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "permissions"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "permissions": {
+                "type": "array",
+                "items": { "enum": ["read", "write", "correct", "forget", "list"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "description": "Domain vocabulary. The OBLIGATION to classify is platform; the vocabulary is domain.",
+      "additionalProperties": false,
+      "properties": {
+        "sensitiveAttributes": { "type": "array", "items": { "type": "string" } },
+        "restrictedAttributes": { "type": "array", "items": { "type": "string" } },
+        "categories": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Module paths for the domain's extension implementations. Omitted entries use the platform default.",
+      "additionalProperties": { "type": "string" }
+    },
+    "observability": {
+      "type": "object",
+      "required": ["logLevel"],
+      "additionalProperties": false,
+      "properties": {
+        "logLevel": {
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
+          "default": "INFO",
+          "description": "DEBUG never enables payload logging; the prohibited-field list is absolute."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geap.example/schemas/pattern.schema.json",
+  "title": "GEAP Platform Pattern Manifest",
+  "description": "Machine-readable contract for a reusable platform pattern. See standards/pattern-contract.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "platform.geap/v1" },
+    "kind": { "const": "Pattern" },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version", "description", "maintainer", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,40}$",
+          "description": "Unique kebab-case pattern name; matches its directory under patterns/."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?$",
+          "description": "Semantic version."
+        },
+        "description": { "type": "string", "minLength": 20, "maxLength": 300 },
+        "maintainer": {
+          "type": "object",
+          "required": ["team"],
+          "additionalProperties": false,
+          "properties": {
+            "team": { "type": "string" },
+            "contact": { "type": "string" }
+          }
+        },
+        "status": {
+          "enum": ["proposed", "alpha", "beta", "certified", "deprecated"],
+          "description": "Certification is a governance act; nothing is certified by default."
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": [
+        "runtime", "interfaces", "configuration", "extensionPoints",
+        "secrets", "cloudPermissions", "infrastructure", "security",
+        "observability", "build", "tests", "compatibility", "upgrade"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "type": "object",
+          "required": ["language", "version", "container"],
+          "additionalProperties": false,
+          "properties": {
+            "language": { "enum": ["python", "typescript", "go", "java"] },
+            "version": { "type": "string" },
+            "container": {
+              "type": "object",
+              "required": ["port", "nonRoot"],
+              "additionalProperties": false,
+              "properties": {
+                "base": { "type": "string" },
+                "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+                "nonRoot": { "const": true, "description": "Control C-12: containers never run as root." }
+              }
+            }
+          }
+        },
+        "interfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["kind", "version", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["openapi", "mcp", "grpc", "asyncapi"] },
+              "spec": { "type": "string", "description": "Repo-relative path; required unless status is planned." },
+              "version": { "type": "string" },
+              "status": { "enum": ["active", "planned", "deprecated"] }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "active" } }, "required": ["status"] },
+                "then": { "required": ["spec"] }
+              }
+            ]
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "required": ["schema", "examples"],
+          "additionalProperties": false,
+          "properties": {
+            "schema": { "type": "string" },
+            "examples": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+          }
+        },
+        "extensionPoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "interface", "required", "default", "failureMode"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              "interface": { "type": "string" },
+              "required": { "type": "boolean" },
+              "default": { "type": "string", "description": "Every extension point has a default." },
+              "failureMode": {
+                "enum": ["deny", "skip"],
+                "description": "Security-relevant extensions must fail closed ('deny')."
+              },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "purpose"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "purpose": { "type": "string" },
+              "required": { "type": "boolean" }
+            }
+          }
+        },
+        "cloudPermissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "google": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["component", "roles"],
+                "additionalProperties": false,
+                "properties": {
+                  "component": { "type": "string" },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "not": { "pattern": "^roles/(owner|editor|viewer)$" },
+                      "description": "Control C-11: primitive roles are forbidden."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "infrastructure": {
+          "type": "object",
+          "required": ["platformOwned", "domainOwned"],
+          "additionalProperties": false,
+          "properties": {
+            "platformOwned": { "type": "string", "description": "The only hard-enforcement seam. See standards/pattern-contract.md." },
+            "domainOwned": { "type": "string" }
+          }
+        },
+        "security": {
+          "type": "object",
+          "required": ["nonOverridableControls", "dataClassification"],
+          "additionalProperties": false,
+          "properties": {
+            "nonOverridableControls": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "pattern": "^C-[0-9]{2}$" }
+            },
+            "dataClassification": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "observability": {
+          "type": "object",
+          "required": ["requiredMetrics", "requiredAuditEvents", "prohibitedLogFields"],
+          "additionalProperties": false,
+          "properties": {
+            "requiredMetrics": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "requiredAuditEvents": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "prohibitedLogFields": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+          }
+        },
+        "build": {
+          "type": "object",
+          "required": ["instructions", "dockerfile", "ownedBy"],
+          "additionalProperties": false,
+          "properties": {
+            "instructions": { "type": "string" },
+            "dockerfile": { "type": "string" },
+            "ownedBy": {
+              "const": "domain",
+              "description": "The platform team never builds a domain's image."
+            }
+          }
+        },
+        "tests": {
+          "type": "object",
+          "required": ["unit", "conformance"],
+          "additionalProperties": false,
+          "properties": {
+            "unit": { "type": "string" },
+            "conformance": { "type": "string", "description": "Consumer-runnable; separate from unit tests." }
+          }
+        },
+        "compatibility": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "minProperties": 1
+        },
+        "upgrade": {
+          "type": "object",
+          "required": ["from", "guide"],
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "array", "items": { "type": "string" } },
+            "guide": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

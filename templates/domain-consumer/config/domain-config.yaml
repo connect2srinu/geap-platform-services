@@ -1,0 +1,31 @@
+# Domain configuration. Validated against the pattern's config schema at startup;
+# the service REFUSES TO START on invalid configuration rather than defaulting.
+#
+# Neutral placeholders only. No real identifiers. No secret values -- secrets are
+# referenced by name and resolved from Secret Manager at runtime.
+
+domain:
+  name: <domain-name>
+
+# --- You own this section -----------------------------------------------------
+rbac:
+  roles:
+    - id: <writer-agent-role>
+      permissions: [read, write, correct, list]
+    - id: <reader-agent-role>
+      permissions: [read, list]
+
+privacy:
+  # The obligation to classify is the platform's; this vocabulary is yours.
+  sensitiveAttributes: []
+  restrictedAttributes: []
+  categories: []
+
+extensions: {}
+  # Omit an entry to use the platform default.
+  # Security-relevant defaults FAIL CLOSED; loosening one needs review.
+  # pii-classifier: extensions.pii.Classifier
+
+observability:
+  # DEBUG does not enable payload logging. The prohibited-field list is absolute.
+  logLevel: INFO

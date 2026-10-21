@@ -1,0 +1,178 @@
+# Publishes a pattern release.
+#
+# MANUAL DISPATCH ONLY. This workflow never runs on a tag push, a merge, or a schedule.
+# A human creates the tag, then dispatches this workflow, and the `release` environment's
+# REQUIRED REVIEWERS gate it a second time. Those reviewers are configured in GitHub by an
+# administrator -- the `environment:` key below names the gate, it does not create one.
+# See docs/operations/repository-administration.md.
+#
+# A published version is a contract with every adopting domain and cannot be withdrawn once
+# consumed. That is why there are two human gates in front of this and no automatic trigger.
+
+name: Release pattern
+
+on:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: "Pattern name, e.g. memory-manager"
+        required: true
+        type: string
+      version:
+        description: "Version to publish, e.g. 1.0.0 (without the 'v')"
+        required: true
+        type: string
+      dry_run:
+        description: "Validate and build artifacts, but do not create the GitHub Release"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release readiness
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve and verify the tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.pattern }}/v${{ inputs.version }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag"
+
+      - uses: actions/checkout@v4
+        with:
+          # Build from the TAG, never from the dispatch ref. Releasing whatever happens to be
+          # on a branch is how a release stops matching its own tag.
+          ref: ${{ steps.resolve.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install -r scripts/requirements.txt
+
+      - name: Manifest version matches the tag
+        run: |
+          set -euo pipefail
+          manifest="patterns/${{ inputs.pattern }}/pattern.yaml"
+          actual=$(python3 -c "import yaml;print(yaml.safe_load(open('$manifest'))['metadata']['version'])")
+          if [ "$actual" != "${{ inputs.version }}" ]; then
+            echo "::error::$manifest declares version '$actual' but the tag says '${{ inputs.version }}'"
+            exit 1
+          fi
+          echo "manifest version $actual matches the tag"
+
+      - name: Pattern manifest and boundary checks
+        run: |
+          python3 scripts/validate_pattern_manifest.py "patterns/${{ inputs.pattern }}"
+          python3 scripts/check_platform_domain_boundary.py
+
+      - name: Changelog has an entry for this version
+        run: |
+          set -euo pipefail
+          changelog="patterns/${{ inputs.pattern }}/CHANGELOG.md"
+          if ! grep -qE "^## \[${{ inputs.version }}\]" "$changelog"; then
+            echo "::error::$changelog has no '## [${{ inputs.version }}]' entry"
+            exit 1
+          fi
+          echo "changelog entry present"
+
+      - name: Status must not be 'proposed'
+        run: |
+          set -euo pipefail
+          manifest="patterns/${{ inputs.pattern }}/pattern.yaml"
+          status=$(python3 -c "import yaml;print(yaml.safe_load(open('$manifest'))['metadata']['status'])")
+          if [ "$status" = "proposed" ]; then
+            echo "::error::cannot publish a pattern whose status is 'proposed' -- its design is not approved"
+            exit 1
+          fi
+          echo "status: $status"
+
+      - name: Conformance suite must be populated and passing
+        run: |
+          set -euo pipefail
+          suite="patterns/${{ inputs.pattern }}/conformance"
+          count=$(find "$suite" -name 'test_*.py' | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::conformance suite is empty -- UNAVAILABLE is not a pass, and a release requires a passing suite"
+            exit 1
+          fi
+          python -m pip install pytest==8.3.4
+          pytest -q "$suite"
+
+      - name: Release notes exist
+        run: |
+          set -euo pipefail
+          notes="docs/releases/${{ inputs.pattern }}-v${{ inputs.version }}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes not found -- the release-track artifact is required"
+            exit 1
+          fi
+          if ! grep -qiE 'live (managed-service )?verification' "$notes"; then
+            echo "::error::$notes must state whether live managed-service verification was performed"
+            exit 1
+          fi
+          echo "release notes present and state live-verification status"
+
+  publish:
+    name: Build, attest and publish
+    needs: validate
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment are the second human gate.
+    environment: release
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # OIDC, for provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Build the pattern bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          name="${{ inputs.pattern }}"
+          version="${{ inputs.version }}"
+          archive="dist/${name}-v${version}.tar.gz"
+          # Vendorable source only: the pattern directory as published.
+          tar --create --gzip --file "$archive" \
+              --exclude='__pycache__' --exclude='.pytest_cache' --exclude='.ruff_cache' \
+              -C patterns "$name"
+          cp "patterns/${name}/pattern.yaml" "dist/pattern.yaml"
+          ( cd dist && sha256sum ./*.tar.gz pattern.yaml > SHA256SUMS )
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          ls -l dist
+
+      - name: Provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.bundle.outputs.archive }}
+
+      - name: Create the GitHub Release
+        if: ${{ inputs.dry_run == false }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ needs.validate.outputs.tag }}" \
+            --title "${{ inputs.pattern }} v${{ inputs.version }}" \
+            --notes-file "docs/releases/${{ inputs.pattern }}-v${{ inputs.version }}.md" \
+            dist/*.tar.gz dist/pattern.yaml dist/SHA256SUMS
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run != false }}
+        run: |
+          echo "::notice::DRY RUN -- artifacts were built and attested but no GitHub Release was created."
+          echo "Re-dispatch with dry_run=false to publish."

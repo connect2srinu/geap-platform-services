@@ -1,0 +1,158 @@
+apiVersion: platform.geap/v1
+kind: Pattern
+
+metadata:
+  name: memory-manager
+  version: 0.1.0
+  description: Domain-owned governed memory tool API over a managed Memory Bank, with policy, RBAC, async write processing and rate-limit handling.
+  maintainer:
+    team: agent-platform
+    contact: <team-contact-placeholder>
+  # PROPOSED: the design has not been approved. Not adoptable.
+  status: proposed
+
+spec:
+  runtime:
+    language: python
+    version: "3.12"
+    container:
+      base: <pinned-base-image>
+      port: 8080
+      nonRoot: true
+
+  interfaces:
+    # PLANNED, not active: the design is not approved, so no contract has been written.
+    # Declaring this 'active' with a stub spec would misrepresent the pattern as adoptable.
+    # It becomes 'active' with a real spec path when the design passes Gate B.
+    - kind: openapi
+      version: v1
+      status: planned
+    # MCP is a planned second transport over the SAME contract and semantics,
+    # never a second contract. Deliberately not stubbed.
+    - kind: mcp
+      version: v1
+      status: planned
+
+  configuration:
+    schema: patterns/memory-manager/config/config.schema.json
+    examples:
+      - patterns/memory-manager/config/example.domain.yaml
+
+  extensionPoints:
+    - id: pii-classifier
+      interface: patterns/memory-manager/extensions/pii_classifier.py
+      required: true
+      default: deny-all
+      failureMode: deny
+      description: Classifies a candidate value before persistence. The OBLIGATION to classify is platform; the vocabulary is domain. Defaults to deny-all so that an unconfigured deployment stores nothing.
+
+    - id: policy-provider
+      interface: patterns/memory-manager/extensions/policy_provider.py
+      required: true
+      default: deny-all
+      failureMode: deny
+      description: Resolves caller role and scope to a permit/deny decision. May refine a platform decision, never override a platform denial.
+
+    - id: entity-resolver
+      interface: patterns/memory-manager/extensions/entity_resolver.py
+      required: false
+      default: noop
+      failureMode: skip
+      description: Resolves an entity reference to a domain-internal identifier. Domain identity resolution; the platform default is a no-op pass-through.
+
+    - id: fact-curator
+      interface: patterns/memory-manager/extensions/fact_curator.py
+      required: false
+      default: last-write-wins
+      failureMode: skip
+      description: Merges the same fact arriving from two sources. Domain merge policy.
+
+  secrets:
+    - name: MEMORY_BANK_CREDENTIALS
+      purpose: Service credentials for the managed Memory Bank, resolved from Secret Manager at runtime.
+      required: false
+
+  cloudPermissions:
+    google:
+      - component: api
+        roles:
+          - roles/pubsub.publisher
+          - roles/secretmanager.secretAccessor
+          - roles/logging.logWriter
+          - roles/cloudtrace.agent
+      - component: worker
+        roles:
+          - roles/pubsub.subscriber
+          - roles/secretmanager.secretAccessor
+          - roles/logging.logWriter
+          - roles/cloudtrace.agent
+          - roles/monitoring.metricWriter
+
+  infrastructure:
+    # The one control that survives a domain forking this source. See standards/pattern-contract.md.
+    platformOwned: patterns/memory-manager/infrastructure/terraform/memory-bank-nfr
+    domainOwned: patterns/memory-manager/infrastructure/terraform/domain-runtime
+
+  security:
+    nonOverridableControls:
+      - C-01
+      - C-02
+      - C-05
+      - C-06
+      - C-07
+      - C-08
+      - C-11
+      - C-16
+    dataClassification:
+      - public
+      - internal
+      - sensitive
+      - restricted
+
+  observability:
+    requiredMetrics:
+      - tool_invocations
+      - tool_latency
+      - queue_depth
+      - queue_age_oldest
+      - retry_attempts
+      - dead_letter_depth
+      - provider_requests
+      - provider_throttled
+      - quota_consumed
+      - policy_denials
+      - extension_errors
+    requiredAuditEvents:
+      - memory_write
+      - memory_deletion
+      - policy_denial
+      - configuration_change
+      - role_grant
+      - role_revocation
+      - exception_invoked
+    prohibitedLogFields:
+      - memory_content
+      - pii
+      - sensitive_value
+      - restricted_value
+      - secrets
+      - authorization_header
+      - provider_error_body
+
+  build:
+    instructions: patterns/memory-manager/docs/build.md
+    dockerfile: patterns/memory-manager/examples/Dockerfile
+    ownedBy: domain
+
+  tests:
+    unit: patterns/memory-manager/tests
+    conformance: patterns/memory-manager/conformance
+
+  compatibility:
+    terraform: ">=1.9"
+    google: "~>7.45"
+    memoryBankSdk: "<to be pinned during design>"
+
+  upgrade:
+    from: []
+    guide: patterns/memory-manager/docs/upgrade.md

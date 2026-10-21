@@ -1,0 +1,5 @@
+# The only dependencies permitted for repository validation scripts.
+# Everything else in scripts/ must use the standard library, so that developers
+# and CI can run validation without installing a project environment.
+PyYAML==6.0.2
+jsonschema==4.25.1

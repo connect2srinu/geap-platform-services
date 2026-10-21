@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in. Never commit terraform.tfvars.
+# Use neutral placeholders in any committed example.
+
+project_id  = "<platform-owned-project-id>"
+region      = "us-central1"
+domain_name = "example-domain"
+
+# Pin by digest, never by tag.
+container_image = "us-central1-docker.pkg.dev/<project>/<repo>/memory-manager@sha256:<digest>"
+
+# Provisioned by the platform team; consumed here.
+memory_bank_id   = "<platform-provisioned-memory-bank-id>"
+audit_sink_topic = "<platform-owned-audit-topic>"
+
+# This domain's allocated share of the SHARED project quota.
+# Agreed with the platform team — the project quota is divided across all domains.
+max_writes_per_minute = 100
+
+min_instances = 1
+max_instances = 10

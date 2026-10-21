@@ -1,0 +1,9 @@
+# Copy to backend.tf and fill in. State is per domain, per environment.
+# This repository applies no infrastructure; this file exists for the domain's use.
+
+terraform {
+  backend "gcs" {
+    bucket = "<domain-terraform-state-bucket>"
+    prefix = "<domain-name>/memory-manager"
+  }
+}
