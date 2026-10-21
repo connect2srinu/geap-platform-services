@@ -2,127 +2,207 @@
 artifact: intent
 feature: 001-memory-manager
 track: full
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 10/21/2026
 related_adrs: [ADR-0001, ADR-0003]
 patterns_touched: [memory-manager]
 ---
 
-# Intent — Domain Memory Manager (Pattern 001)
+# Intent — Memory Manager v0.1.0: a governed write path for agent memory
 
-> **Stage 1, `status: draft`.** Awaiting **Gate A**. Created as part of the foundation so that
-> Pattern 001 has a home; the content below is a starting point derived from the supplied diagram and
-> the foundation assessment, **not** an approved intent.
+> Stage 1. Approval at **Gate A** is required before design work begins, and before any remote
+> branch or pull request is created.
 
 ## Method
 
-Derived on 2026-10-20 from: the supplied `[Container] Domain Memory Manager` diagram (screenshot,
-transcribed in `design/000-platform-foundation/intent.md` §1.3); the prior-art repository
-`geap-memory` (read on 2026-10-20, in particular `docs/vertex-memory-bank.md` and
-`docs/memory-bank-assumption-validation.md`); and ADR-0001 and ADR-0003.
+Rewritten on 2026-10-21 from the requester's v0.1.0 scope statement, which replaces the earlier draft
+of this file (broader tool surface: `remember`/`recall`/`list`/`correct`/`forget`, async queue).
+Read for context on `main` at `69eee1b`:
+
+- `docs/decisions/ADR-0001-published-pattern-model.md`, `ADR-0003-shared-platform-gcp-project.md`
+  (Accepted, 2026-10-20).
+- `standards/security.md` — controls C-01, C-02, C-05, C-16, C-17.
+- `patterns/memory-manager/pattern.yaml` and `config/example.domain.yaml` (status `proposed`).
+- Prior art `../geap-memory`: `docs/vertex-memory-bank.md`, `docs/memory-bank-assumption-validation.md`,
+  `apps/control-plane-api/app/control_plane_api/integrations/vertex_memory_store.py`.
 
 ## Business objective
 
-Give agent teams one governed way to store and retrieve customer memory, owned and operated by the
-domain that owns the data and its rules, without each agent team reimplementing authorization,
-privacy classification, rate-limit handling or audit.
+Give agents one governed way to persist memory about the users they serve: only facts on approved,
+non-sensitive topics are ever stored, ownership is decided by the platform rather than the caller,
+and anything the memory provider later rewrites into prohibited content is caught and removed. Agent
+teams get this without each reimplementing authorization, topic governance, sensitivity
+classification or audit; domains control what is eligible through configuration.
 
 ## Requester and stakeholders
 
 | Role | Who |
 |---|---|
-| Requester | Platform team (project owner) |
-| Platform lead | `OPEN` |
-| Affected domains | Customer first; Inventory on onboarding |
-| Affected agent teams | Agents integrating with the Customer domain |
+| Requester | Platform team — connect2srinu (project owner) |
+| Platform lead | connect2srinu |
+| Affected domains | First consuming domain on onboarding; the pattern is domain-neutral |
+| Affected agent teams | Agents that write or recall user memory through this pattern |
 
 ## Reusable or domain-specific
 
 | | |
 |---|---|
 | Classification | `reusable-pattern` |
-| Patterns touched | `memory-manager` |
-| Contracts touched | New: the tool API (`v1`) |
+| Patterns touched | `memory-manager` (first version, `0.1.0`) |
+| Contracts touched | New: the tool API `v1` — write and recall operations only |
 
-Reusable. The three behaviours the diagram places inside the worker — entity resolution, PII
-stripping, fact curation — are **domain** behaviour and are declared as extension points, not
-platform code.
+Reusable. The *obligations* — authenticate, authorize, resolve ownership server-side, validate,
+classify, verify after write, audit — are platform. *Which* topics exist, their sensitivity and their
+eligibility are domain configuration, supplied through a `topic-provider` extension point whose
+default reads versioned YAML.
+
+**Full track** — a new contract, a new extension point (`topic-provider`) and a new managed-service
+call (`GenerateMemories`) each independently rule out the light track.
 
 ## Scope
 
-1. Tool endpoints: `remember`, `recall`, `list`, `correct`, `forget`, with per-caller rate limiting.
-2. Domain policy and RBAC driven by versioned configuration.
-3. Asynchronous write processing, with classification, entity resolution and curation at declared
-   extension points.
-4. A retry queue for over-limit and failed writes, with bounded retry, backoff and dead-lettering.
-5. A Memory Bank integration boundary.
-6. Observability: structured logs, traces, the required metrics, and audit events.
-7. Reference deployment Terraform, split platform-owned and domain-owned.
-8. A consumer-runnable conformance suite.
+1. **Authenticated write of already-structured facts.** An agent submits facts; it does not submit
+   raw user messages.
+2. **Identity-derived authorization.** The agent's permissions come from its authenticated identity,
+   never from the request.
+3. **Server-side ownership.** The user and the owning memory scope are resolved server-side. Any
+   user, scope or role value in the request body has no effect on where a fact is written.
+4. **Topic eligibility.** The agent's approved topic configuration is loaded; only topics that are
+   approved for that agent, enabled, and classified non-sensitive are eligible. Sensitive,
+   restricted and unknown topics are excluded.
+5. **Per-fact validation** before any write: topic, field, value type, sensitivity and ownership.
+   A fact is rejected if it is an unsupported inference, or if its value carries prohibited
+   information even though it is labelled with an allowed topic.
+6. **Provider write.** Approved facts are written with `GenerateMemories` using
+   `direct_memories_source` — no provider-side extraction.
+7. **No-op on nothing eligible.** A request in which no fact qualifies returns a no-op result, not an
+   error, and makes no provider write.
+8. **Post-write verification.** Because consolidation can rewrite a fact after validation, each write
+   is followed by reading back the consolidated memories in the scope, re-running the sensitivity
+   classifier, and deleting and auditing any memory that now carries prohibited content. This
+   deletion is internal; it is not the `forget` tool operation.
+9. **Recall** for the same server-resolved scope, so that a write can be proven.
+10. **Topic configuration as versioned YAML** behind a `topic-provider` extension point.
+11. Audit events, structured logs, traces and metrics for the above; a consumer-runnable conformance
+    suite.
+
+### Reference topic configuration
+
+Classification drives eligibility. This is the shape of the **example** configuration shipped with
+the pattern — it lives in `config/`, never in `src/`:
+
+| Topic | Classification | Extraction | Eligible in v0.1.0 |
+|---|---|---|---|
+| `preferred_brands` | non-sensitive | allowed | yes |
+| `preferred_cuisines` | non-sensitive | allowed | yes |
+| `medical_conditions` | sensitive | blocked | no |
+| `prescription_details` | restricted | blocked | no |
+
+The `extraction` flag is declared now so the shape is stable for v0.2.0; nothing in v0.1.0 acts on
+it.
 
 ## Non-goals
 
+- **Gemini extraction from raw user messages** — v0.2.0.
+- **A configuration database.** Topics are versioned YAML behind the `topic-provider` extension point.
+- **`correct`, `forget` and `list` tool operations.**
+- **MCP** — remains `planned`.
+- **Provider-side extraction** in any form. Only `direct_memories_source` is used.
 - The platform operating any domain's runtime (ADR-0001).
-- Any business-domain rule in `src/` — households, consent semantics, category vocabularies.
-- An MCP interface in v1 — declared `planned`.
-- Managed provider-side memory extraction. The prior art turned it off deliberately
-  (**VERIFIED**, MB-05: *"provider extraction stores ungoverned memories"*); this pattern stores only
-  governed writes.
-- An admin console.
-- Multi-cloud support.
+- Any business-domain rule in `src/` — topic names and their classification are configuration.
 
 ## Acceptance criteria
 
-1. An authenticated caller with a write role can `remember` a value and receive `202`; the value is
-   retrievable by `recall` in a later session.
-2. `202` is returned only when the write is **durably enqueued**; an enqueue failure returns `503`.
-3. A duplicate `remember` with the same `Idempotency-Key` produces exactly one stored effect.
-4. A read-only role attempting a write receives `403`; no value is stored.
-5. A caller from one domain cannot read or write another domain's memory.
-6. With no `pii-classifier` configured, the default denies and nothing is stored.
-7. An extension that raises becomes a denial plus an `extension_errors` metric, never a bypass.
-8. Provider throttling results in the write being parked and retried with backoff — not a hot loop,
-   and not an error to the caller.
-9. A write exhausting its attempts lands in the dead-letter queue and is inspectable and replayable.
-10. No log, trace attribute or error response contains memory content, PII or secrets, asserted by a
-    test that fails if the redaction is removed.
-11. Every memory write, deletion and policy denial emits an audit event with a correlation ID.
-12. A domain can be supported by configuration alone, with no change to `src/`.
-13. The conformance suite runs against a built image and passes.
-14. `max_writes_per_minute` is enforced per domain, and `quota_consumed` is attributable per domain.
+1. An unauthenticated request receives `401`; nothing is written (C-01).
+2. An authenticated agent whose identity carries no write permission receives `403`; nothing is
+   written (C-02).
+3. A request whose body names a different user, scope or role writes only to the server-resolved
+   scope; the body value has no effect, asserted by a test that reads both scopes.
+4. A fact on a topic that is sensitive, restricted, unknown, disabled, or not approved for the
+   calling agent is excluded and not written. One test per case, using the reference configuration.
+5. A fact with an unknown field or a value of the wrong type for its topic is rejected and not
+   written.
+6. A fact labelled with an eligible topic whose value the classifier marks prohibited — for example a
+   medical condition submitted as `preferred_brands` — is rejected and not written.
+7. A fact identified as an unsupported inference is rejected and not written. *Testable once Q3
+   defines "unsupported inference".*
+8. If the classifier or the `topic-provider` errors or is unconfigured, the affected facts are denied,
+   never written (fail closed).
+9. Approved facts reach the provider only through `GenerateMemories` with `direct_memories_source`.
+   A unit test against a fake client asserts the call shape and that no extraction source is
+   ever sent; a separately labelled live test confirms it against Memory Bank.
+10. A request with no eligible facts returns a no-op result with a success status, and the provider
+    receives no write call.
+11. When consolidation rewrites a stored memory into prohibited content, post-write verification
+    deletes that memory and emits an audit event; asserted with a fake provider that rewrites on
+    consolidation.
+12. When post-write verification cannot complete, the write is never reported as verified, and the
+    outcome follows the policy chosen in Q7.
+13. A fact written by an agent is returned by `recall` for the same scope within bound *N*; *N* is
+    set in `design.md` and validated live against the provider (reads are eventually consistent).
+14. An agent cannot write to or recall from another domain's memory (C-16, per-domain bank).
+15. No log, trace attribute or error response contains a fact value, PII or secret, asserted by a
+    test that fails if the redaction is removed. Logs carry topic *names*, decisions and reason codes.
+16. Every write, every rejection and every post-write deletion emits an audit event with a
+    correlation ID and a reason code, and no value.
+17. A new domain with its own topic set is supported by YAML configuration alone, with no change to
+    `src/`.
+18. The conformance suite runs against a built image and passes.
 
 ## Constraints and dependencies
 
-- **Shared quota** (ADR-0003): per project, per region, across every domain. Separate banks do not
-  separate quota. Writes consume read quota (**VERIFIED**).
-- **No field-level profile update** in Memory Bank; the prior art stores append-only typed JSON facts
-  with a write counter (**VERIFIED**).
-- **Eventually consistent reads** (**VERIFIED**) — bounds any read-back-based idempotency check.
-- Deployment is Cloud Run in the platform-owned project.
-- Platform-owned Terraform must provision the bank, its IAM binding, the audit sink and quota
-  alerting before a domain can deploy.
+- **Per-domain memory bank** in one platform-owned project (ADR-0003, **VERIFIED** — Accepted
+  2026-10-20). Isolation is per-domain service account plus IAM Conditions on bank scope.
+- **Shared quota** across all domains in the project (ADR-0003). Every write now also costs a
+  read-back for verification, so a write consumes more read quota than in the prior art.
+- **Eventually consistent reads** (**VERIFIED** in prior art, `docs/vertex-memory-bank.md`). This
+  bounds both recall-after-write (AC13) and post-write verification (Q5, Q7).
+- **Departure from prior art.** The prior art never calls `GenerateMemories`; it writes with a direct
+  `create` so that no provider consolidation runs (**VERIFIED**, `vertex_memory_store.py:195`;
+  MB-05 in `memory-bank-assumption-validation.md`). This intent deliberately accepts consolidation
+  and compensates with post-write verification. See Q4.
+- **Manifest changes required**, to be made in design, not here: add a `topic-provider` extension
+  point; reconsider `entity-resolver` `failureMode: skip`, which would be wrong if ownership
+  resolution runs through it; reconcile queue metrics and Pub/Sub roles with Q8; set the interface
+  scope to write and recall.
+- Deployment is Cloud Run in the platform-owned project. Platform-owned Terraform provisions the bank,
+  its IAM binding, the audit sink and quota alerting before a domain deploys.
+
+## Resolved during intent
+
+| ID | Question | Resolution |
+|---|---|---|
+| R1 | Is the memory bank per domain or per agent? | **Per domain**, by accepted ADR-0003. The diagram's "one per agent" label diverges; the diagram author is asked to confirm, but the decision stands unless ADR-0003 is superseded. |
+| R2 | Caller identity model? | **Google-signed ID token** mapped to exactly one registered caller — already mandated by `standards/security.md` C-01. |
 
 ## Open questions
 
 | ID | Question | Blocks | Who decides |
 |---|---|---|---|
-| Q1 | Is the memory bank boundary **per domain** (ADR-0003) or **per agent** (as the diagram labels it)? | NFR Terraform, isolation model | Diagram author + platform lead |
-| Q2 | Is the agent's direct `recall` path to the bank retained? It consumes shared quota and is ungoverned by this service's limiter. | Quota strategy, `C-16` | Platform lead |
-| Q3 | Worker shape: Cloud Run service with a pull subscription, or Jobs for batch replay? | Deployment Terraform | Design |
-| Q4 | Idempotency mechanism: key stored in-fact and checked during the worker's existing pre-read, or a dedicated dedupe store? Eventual consistency bounds the first. | Contract, `C-17` | Design, with provider validation |
-| Q5 | Per-domain quota budgets: static configuration or dynamic from observed project headroom? | Config schema | Platform lead |
-| Q6 | Is `correct` a distinct operation or `remember` with a prior-version reference? | Contract | Design |
-| Q7 | Retention bounds — the prior art's values are placeholders pending Legal (**VERIFIED**). | Config schema | Legal + platform lead |
-| Q8 | Which caller identity model: Google-signed ID token, matching the prior art? | `C-01` | Platform lead |
+| Q2 | Where does the server-side user identity come from — an ID-token claim, a session lookup, or the `entity-resolver` extension? If an extension, its failure must deny, not skip. | AC3, contract, manifest | Platform architect |
+| Q3 | What is an "unsupported inference", and what detects it — the classifier extension, a rule in topic configuration, or both? | AC7 | Platform lead + first domain |
+| Q4 | Is provider consolidation wanted for its own sake (deduplication, merging), justifying `GenerateMemories` over the prior art's direct `create`? Record as an ADR in design. | Scope 6, AC9 | Platform architect |
+| Q5 | Between consolidation and post-write deletion, prohibited content exists in the bank and could be recalled. Is that window acceptable, or must `recall` also re-classify before returning? | AC11, AC13, C-05 | Security reviewer |
+| Q6 | Consolidation can merge a new fact into an existing memory. Deleting the merged memory may remove previously valid content. Delete, quarantine, or restore? | AC11 | Platform architect + security reviewer |
+| Q7 | When verification cannot complete — read-back fails, or the consolidated result is not yet visible — retry, quarantine, or alert? | AC12 | Platform architect |
+| Q8 | Are rate limiting, async processing, retry with backoff, idempotency and dead-lettering in v0.1.0? The earlier draft scoped them; this scope neither includes nor excludes them. C-17 and the shared quota apply either way. | Contract, manifest, Terraform | Platform lead |
+| Q9 | Read-after-write bound *N* for AC13. Deferred to design by the requester. | AC13 | Design, validated live |
+| Q10 | Should `recall` return only topics the calling agent is approved for, or everything in the scope? | Recall contract | Platform lead |
+| Q11 | Retention bounds — the prior art's values are placeholders pending Legal (**VERIFIED**). | Config schema | Legal + platform lead |
 
 ## Assumptions
 
+- **ASSUMPTION** — `GenerateMemories` with `direct_memories_source` stores the supplied facts without
+  extraction but still runs consolidation. This is the premise of post-write verification; it is not
+  yet verified live and must be before Gate C.
 - **ASSUMPTION** — "Memory Bank" is Vertex AI / Gemini Enterprise Agent Platform Memory Bank on the
-  `agentplatform` 2.x surface, as the prior art uses (**VERIFIED** as its choice, exercised live).
-- **ASSUMPTION** — the transcribed diagram accurately reflects intent. It is labelled *Proposed* and
-  its author has not confirmed the transcription (Q1 is one consequence).
+  `agentplatform` 2.x surface, as the prior art uses (**VERIFIED** as its choice).
+- **ASSUMPTION** — the sensitivity classifier used before the write and the one used after it are the
+  same `pii-classifier` extension, so the two decisions cannot disagree by construction.
 
 ## Approval
 
 **Gate A.** Not approved. A human sets `status: approved` with `approved_by` and `approved_date`
-after reviewing scope, non-goals and acceptance criteria — and after resolving, or explicitly
-deferring, Q1.
+after reviewing scope, non-goals and acceptance criteria. Q3 may be deferred to design, but AC7 is
+not testable until it is answered.
