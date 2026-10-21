@@ -2,7 +2,9 @@
 artifact: design
 feature: 001-memory-manager
 track: full
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-21
 ---
 
 # Design — Memory Manager v0.1.0: a governed write path for agent memory
