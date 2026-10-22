@@ -28,13 +28,19 @@ DOMAIN_NAMES = re.compile(
     r"\b(customer|inventory|manufacturing|supply[_ -]?chain)\b", re.I
 )
 # Real enterprise identifiers that must not appear anywhere in published assets.
-ENTERPRISE_IDENTIFIERS = re.compile(
-    r"\b(kroger|cooklist|ksa)\b", re.I
-)
+ENTERPRISE_IDENTIFIERS = re.compile(r"\b(kroger|cooklist|ksa)\b", re.I)
 PRIMITIVE_ROLES = re.compile(r"roles/(owner|editor|viewer)\b")
 
 SCAN_EXTENSIONS = {".py", ".yaml", ".yml", ".json", ".tf", ".md", ".sh", ".toml"}
-SKIP_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".terraform", "design", "docs"}
+SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "node_modules",
+    "__pycache__",
+    ".terraform",
+    "design",
+    "docs",
+}
 
 
 def iter_files(root: Path) -> list[Path]:
@@ -58,10 +64,16 @@ def main() -> int:
         for path in iter_files(patterns_dir):
             rel = path.relative_to(REPO_ROOT)
             parts = rel.parts
-            in_source = len(parts) > 2 and parts[2] in ("src", "contracts", "extensions")
+            in_source = len(parts) > 2 and parts[2] in (
+                "src",
+                "contracts",
+                "extensions",
+            )
             if not in_source or path.suffix == ".md":
                 continue
-            for i, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            for i, line in enumerate(
+                path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            ):
                 if line.lstrip().startswith("#"):
                     continue
                 if DOMAIN_NAMES.search(line):
@@ -78,7 +90,9 @@ def main() -> int:
             continue
         for path in iter_files(root):
             rel = path.relative_to(REPO_ROOT)
-            for i, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            for i, line in enumerate(
+                path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            ):
                 if ENTERPRISE_IDENTIFIERS.search(line):
                     report.error(
                         f"{rel}:{i}",
@@ -91,9 +105,17 @@ def main() -> int:
         for path in patterns_dir.rglob("src/**/*.py"):
             rel = path.relative_to(REPO_ROOT)
             text = path.read_text(encoding="utf-8", errors="ignore")
-            if "providers" in path.parts and re.search(r"^\s*from\s+\S*\bapi\b", text, re.M):
-                report.error(str(rel), "providers/ imports api/ -- dependencies point downward only")
-            if re.search(r"^\s*from\s+extensions\.", text, re.M) and "dispatch" not in path.name:
+            if "providers" in path.parts and re.search(
+                r"^\s*from\s+\S*\bapi\b", text, re.M
+            ):
+                report.error(
+                    str(rel),
+                    "providers/ imports api/ -- dependencies point downward only",
+                )
+            if (
+                re.search(r"^\s*from\s+extensions\.", text, re.M)
+                and "dispatch" not in path.name
+            ):
                 report.error(
                     str(rel),
                     "src/ imports an extension implementation directly; only the dispatcher may",
@@ -108,9 +130,13 @@ def main() -> int:
             if path.suffix not in {".tf", ".yaml", ".yml", ".json"}:
                 continue
             rel = path.relative_to(REPO_ROOT)
-            for i, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            for i, line in enumerate(
+                path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+            ):
                 if PRIMITIVE_ROLES.search(line):
-                    report.error(f"{rel}:{i}", "primitive IAM role is forbidden (control C-11)")
+                    report.error(
+                        f"{rel}:{i}", "primitive IAM role is forbidden (control C-11)"
+                    )
     report.ok()
 
     return report.finish()

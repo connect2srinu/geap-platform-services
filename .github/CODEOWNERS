@@ -5,31 +5,48 @@
 # See docs/operations/repository-administration.md. A CODEOWNERS file in a repository with no
 # branch protection enforces nothing.
 #
-# Replace the placeholder teams with real GitHub teams before relying on this.
+# THIS REPOSITORY has one maintainer, so every path names @connect2srinu, and review is not
+# required here (docs/operations/repository-administration.md §0). The intended team for each
+# path is kept in the '# team:' comment above it. An organization adopting this layout replaces
+# @connect2srinu with those teams and turns on "Require review from Code Owners".
 
 # Default
-*                                   @<org>/agent-platform
+# team: agent-platform
+*                                   @connect2srinu
 
 # The strictest ownership in the repository: the tool API is identical across every domain,
 # so a change here affects every agent team integrating with any domain.
-/patterns/*/contracts/              @<org>/platform-architects
-/standards/api-design.md            @<org>/platform-architects
-/schemas/                           @<org>/platform-architects
+# team: platform-architects
+/patterns/*/contracts/              @connect2srinu
+# team: platform-architects
+/standards/api-design.md            @connect2srinu
+# team: platform-architects
+/schemas/                           @connect2srinu
 
 # Security
-/standards/security.md              @<org>/security-reviewers
-**/controls-check.md                @<org>/security-reviewers
-/.claude/rules/security-baseline.md @<org>/security-reviewers
+# team: security-reviewers
+/standards/security.md              @connect2srinu
+# team: security-reviewers
+**/controls-check.md                @connect2srinu
+# team: security-reviewers
+/.claude/rules/security-baseline.md @connect2srinu
 
 # Platform-owned infrastructure is the only hard-enforcement seam.
-/patterns/*/infrastructure/terraform/memory-bank-nfr/   @<org>/platform-architects @<org>/security-reviewers
-/patterns/*/infrastructure/terraform/platform-owned/    @<org>/platform-architects @<org>/security-reviewers
+# team: platform-architects security-reviewers
+/patterns/*/infrastructure/terraform/memory-bank-nfr/   @connect2srinu
+# team: platform-architects security-reviewers
+/patterns/*/infrastructure/terraform/platform-owned/    @connect2srinu
 
 # The SDLC itself
-/CLAUDE.md                          @<org>/platform-leads
-/.claude/                           @<org>/platform-leads
-/standards/                         @<org>/platform-leads
-/.github/workflows/                 @<org>/platform-leads
+# team: platform-leads
+/CLAUDE.md                          @connect2srinu
+# team: platform-leads
+/.claude/                           @connect2srinu
+# team: platform-leads
+/standards/                         @connect2srinu
+# team: platform-leads
+/.github/workflows/                 @connect2srinu
 
 # Release machinery
-/standards/release-management.md    @<org>/platform-leads
+# team: platform-leads
+/standards/release-management.md    @connect2srinu
