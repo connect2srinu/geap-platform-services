@@ -201,7 +201,7 @@ carried as implementation requirements under C-01 and C-02:
 | **Implementation** | **Since ADR-0004 (2026-10-22):** one domain-level `retentionDays`, bounded by a platform maximum in the schema (T-07). It is enforced by the domain bank's `generate_created_ttl` and `generate_updated_ttl`, set by platform Terraform (T-39). No TTL is sent on write. Per-topic retention is deferred to v0.2.0. *Superseded text: per-topic `retentionDays`, enforced by a per-memory provider TTL set on write.* **Recheck:** L7 is extended: the TTL must survive consolidation, and expiry is observed. **VERIFIED by introspecting SDK 2.3.0, not live:** `GenerateMemoriesConfig` has no per-request `ttl`, and `Memories` has no update method. TTL for generated memories is bank-level (`ttl_config.granular_ttl_config.generate_created_ttl` / `generate_updated_ttl`). So the approved design's per-topic `retentionDays`, set on write, cannot be carried by `GenerateMemories` with this SDK. One bank per domain means one retention period per domain. |
 | **Verification** | Schema test: `retentionDays` above the maximum rejected (T-07). Tier 1 live: L7 (T-24), against a bank with generate TTLs, with expiry observed. |
 | **Status** | Gap |
-| **Evidence** | Two open items. (1) **Pending Tier 1 (L7):** whether the bank-level TTL applies, survives consolidation and expires memories. If L7 fails, the contingent exception below applies. (2) **A design defect, returned to Stage 2 (requester, 2026-10-22), and decided the same day (ADR-0004):** one retention period per domain, declared once in domain configuration and enforced by the bank's TTL, set by platform Terraform (T-39). Per-topic retention is deferred to v0.2.0. **ADR-0004 rests on L7:** if L7 fails, it is reopened, not replaced by an exception. Still OPEN: the bounds (DEC-8), and whether "retention from last write" meets Legal's definition. The bounds are still OPEN with Legal (DEC-8). |
+| **Evidence** | Two open items. (1) **Pending Tier 1 (L7):** whether the bank-level TTL applies, survives consolidation and expires memories. If L7 fails, ADR-0004 is reopened (Stage 2); C-09 takes no exception. (2) **A design defect, returned to Stage 2 (requester, 2026-10-22), and decided the same day (ADR-0004):** one retention period per domain, declared once in domain configuration and enforced by the bank's TTL, set by platform Terraform (T-39). Per-topic retention is deferred to v0.2.0. **ADR-0004 rests on L7:** if L7 fails, it is reopened, not replaced by an exception. Still OPEN: the bounds (DEC-8), and whether "retention from last write" meets Legal's definition. The bounds are still OPEN with Legal (DEC-8). |
 
 ### C-10 — Minimal network exposure
 
@@ -328,17 +328,19 @@ Tier 2 L12 before release), C-11 (DEC-6), C-13 (T-05), C-16 (no exception; Tier 
 | Control | Exception | Compensating control | Approver | Date | Expires |
 |---|---|---|---|---|---|
 | C-05 | (b) Prohibited content can persist in the bank between provider consolidation and remediation, and until the next recall when verification is incomplete. **Pending Tier 1: L1, L2, L3** | Read-back and re-classification of every touched memory (T-25); recall-time re-classification and withholding (T-33); `written_unverified`; per-domain `remediations` alert (T-39) |  |  |  |
-| C-09 | **Contingent, and probably to be deleted:** ADR-0004 says an L7 failure reopens the retention decision rather than taking an exception. Kept only until the requester confirms. **Pending Tier 1: L7** | Retention disclosure in the adopting domain's runbook, and a manual purge procedure (T-43) |  |  |  |
 | C-17 | No cross-instance idempotency or key-reuse detection in v0.1.0. **Pending Tier 1: L5** (if L5 fails, there is no exception: Stage 2) | Required `Idempotency-Key` and per-instance replay (T-30); bounded, budgeted retry (T-22); provider-side dedup (L5); Cloud Run session affinity (T-40) |  |  |  |
 | C-19 | The per-domain budget is enforced per instance; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together. Not Tier-1-dependent. **Drafted 2026-10-22 for the approver's confirmation** | Platform-owned per-domain quota alert and `quota_consumed{domain}` (T-39); one variable for `max_instances` and `MAX_INSTANCES`, with refusal to start without it (T-09, T-40) | Srinivasa reddy | 2026-10-22 | 2027-04-22 |
 
 **Draft rows. None is approved.** The requester accepted these exceptions in principle on
 2026-10-21.
 
-- **C-05, C-09, C-17:** Approver, Date and Expires stay **deliberately empty until Tier 1 runs**
+- **C-05, C-17:** Approver, Date and Expires stay **deliberately empty until Tier 1 runs**
   (requester, 2026-10-22). The design-artifact validator rejects an approved assessment while any of
-  the three is empty for a `Gap`. Delete the C-09 row if L7 passes and Stage 2 makes it unnecessary.
+  the three is empty for a `Gap`.
   Delete the C-17 row, and return to Stage 2, if L5 fails.
+- **C-09** has no row. The contingent exception was deleted at the requester's instruction on
+  2026-10-22, because ADR-0004 reopens the retention decision if L7 fails instead of taking an
+  exception. C-09 can leave `Gap` only through T-07, T-39 and a passing L7.
 - **C-19** is filled at the requester's instruction, for confirmation. Approver and date are as
   instructed. **The expiry `2027-04-22` is PROPOSED, not given:** no v0.2.0 date or maximum exception
   length exists in the repository, so it is six months from the date. Change it if v0.2.0 has a

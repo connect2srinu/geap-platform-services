@@ -477,7 +477,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Run `spike/probe_memory_bank.py` against a real bank in the platform project and record each output. This settles L1–L9 and L11, and with them DEC-3, DEC-4 (through L5), DEC-11 (the SDK pin) and the AC13 bound *N* |
 | **Components** | Design folder |
-| **Expected changes** | The probe was written on 2026-10-22, before Gate D, at the requester's instruction. It is a design-stage spike, not pattern code, and needs only the standard library and the pinned SDK (`google-cloud-aiplatform[agent_engines]==2.3.0`). The run produces `live-verification.md`: date, commit, SDK version, command, the probe's raw output (`--json`) and a verdict per L-item. UNAVAILABLE is recorded as unavailable, never as a pass. **Claude cannot run this**: it needs the requester's platform credentials and a bank the platform team provisions for the spike; this repository applies no infrastructure. **Outcomes:** <br>• L1, L5 or L6 fail → stop and re-enter Stage 2. L5 failing also means there is no DEC-4 exception. <br>• L4 (c) fails → DEC-3 delete-only, and T-27 is dropped. L4 (d) fails → Stage 2. <br>• L7 fails → C-09 takes its exception, and T-43 carries the disclosure and purge procedure. <br>• C-05 (b) takes its exception whatever the result, because the design depends on consolidation (L1). <br>• L11 is **no** → a disclosure for every adopting domain (006 AC4), not a configuration option. <br>The bank-level TTL finding in design.md "Live verification" needs a design decision whatever L7 shows |
+| **Expected changes** | The probe was written on 2026-10-22, before Gate D, at the requester's instruction. It is a design-stage spike, not pattern code, and needs only the standard library and the pinned SDK (`google-cloud-aiplatform[agent_engines]==2.3.0`). The run produces `live-verification.md`: date, commit, SDK version, command, the probe's raw output (`--json`) and a verdict per L-item. UNAVAILABLE is recorded as unavailable, never as a pass. **Claude cannot run this**: it needs the requester's platform credentials and a bank the platform team provisions for the spike; this repository applies no infrastructure. **Outcomes:** <br>• L1, L5 or L6 fail → stop and re-enter Stage 2. L5 failing also means there is no DEC-4 exception. <br>• L4 (c) fails → DEC-3 delete-only, and T-27 is dropped. L4 (d) fails → Stage 2. <br>• L7 fails → ADR-0004 is reopened and the design re-enters Stage 2. C-09 takes no exception (contingent row deleted 2026-10-22). <br>• C-05 (b) takes its exception whatever the result, because the design depends on consolidation (L1). <br>• L11 is **no** → a disclosure for every adopting domain (006 AC4), not a configuration option. <br>The bank-level TTL finding in design.md "Live verification" needs a design decision whatever L7 shows |
 | **Dependencies** | None in this plan: it needs no pattern code. Needs a bank provisioned for the spike in the platform project, and the requester's platform credentials |
 | **Acceptance criteria** | 9, 13 (live evidence) |
 | **Tests** | The probe |
@@ -749,7 +749,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Give an adopting domain what it needs to run the service: alerts, dashboards, `written_unverified` and `remediation_failed` triage, and quota-contention triage across domains |
 | **Components** | `P/docs/` |
-| **Expected changes** | New `docs/operations.md` (C-18 references it). It includes the `remediations` alert's triage (C-05 (b)). If L7 fails: the retention disclosure and a manual purge procedure (C-09). If L12 fails: the public-ingress exception and its compensating controls (C-10). `build.md` updated so it is executable. `upgrade.md` states there is no prior version |
+| **Expected changes** | New `docs/operations.md` (C-18 references it). It includes the `remediations` alert's triage (C-05 (b)). If L12 fails: the public-ingress exception and its compensating controls (C-10). `build.md` updated so it is executable. `upgrade.md` states there is no prior version |
 | **Dependencies** | T-38, T-40 |
 | **Acceptance criteria** | — |
 | **Tests** | None. This task is documentation |
@@ -878,7 +878,7 @@ statuses for the controls this plan now closes (C-06, C-10, C-11, C-13, C-16, an
 `## Approved exceptions` rows, each with an approver, a date, a calendar expiry and a compensating
 control, for C-05 (b), C-19 and C-17 (after L5). The design-artifact
 validator fails until every approved `Gap` has such a row. Tier 1 evidence (T-24) comes first,
-because the C-05 (b) and C-17 exceptions, and C-09's contingent one, depend on it.
+because the C-05 (b) and C-17 exceptions depend on it, and so does C-09 (L7).
 
 **Stage 2 re-entry (2026-10-22).** The requester returned the design to Stage 2 for the retention
 defect (design.md "Approval"), with `disable_memory_revisions` vs rollback and O6 as further inputs.
