@@ -64,17 +64,25 @@ fixed, not a regression.
 
 ## Verification
 
-All on **Python 3.12.3** (`.venv` recreated by change 003's `make deps`). Results from the earlier
-3.9.23 venv are superseded and are not counted.
+All on **Python 3.12.3** and ruff 0.8.4 (the CI pin), after rebasing onto `main` at `c577d52`
+(change 003). Earlier results, from before the rebase and on the 3.9.23 venv, are superseded and
+not counted.
+
+The rebase's one conflict was in `scripts/validate_design_artifacts.py`, and it was formatting
+only. **VERIFIED**: 003's change to the file is AST-identical to its parent. The resolution took
+this change's version, which is AST-identical to the pre-rebase commit, and ran `ruff format`.
+The diff against `main` touches only the controls section.
 
 | Check | Command | Result |
 |---|---|---|
 | Unit tests | `pytest -q tests/test_validate_controls_check.py` | **passed** — `13 passed` |
-| Tests fail without the fix | the old string-presence rule restored temporarily | **failed as intended** — `7 failed, 6 passed`; fix restored |
-| Lint on changed files | `ruff check scripts/validate_design_artifacts.py tests` | **passed** — `All checks passed!` |
-| Validator on this branch's design folders | `python3 scripts/validate_design_artifacts.py` | **passed** — `25 checks` |
+| Tests fail without the gap rule | gap/exception logic reverted to string presence (`"Exception approved" in body`), per-control status parsing kept | **failed as intended** — `7 failed, 6 passed`; fix restored |
+| Tests fail with `main`'s whole rule | `check_controls` replaced by `main`'s string-presence logic, including its `**Status:**` pattern | **failed as intended** — `10 failed, 3 passed`. The 3 extra failures are the unrecognised, missing and empty status tests: `main`'s pattern never matches the `\| **Status** \|` table row. Fix restored, `git status` clean |
+| Lint | `ruff check patterns scripts templates tests` | **passed** — `All checks passed!` |
+| Format | `ruff format --check patterns scripts templates tests` | **passed** — `11 files already formatted` |
+| All unit tests | `pytest -q tests` | **passed** — `13 passed` |
+| Validator on this branch's design folders | `python3 scripts/validate_design_artifacts.py` | **passed** — `33 checks, 0 warning(s)` |
 | Validator on 001's committed artifacts (copy at `e1b0f68`) | same, against the copy | **failed as intended** — `29/38 checks passed, 9 error(s)`: C-05, C-06, C-09, C-10, C-11, C-13, C-16, C-17, C-19 |
-| `ruff format --check` on the script | — | **skipped** — the script was never formatted (that is change 003). New lines follow the file's existing style |
 
 ## Approval
 
