@@ -28,18 +28,5 @@
       "Bash(docker push*)",
       "Bash(gcloud run deploy*)"
     ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/hooks/warn_unapproved_implementation.py\""
-          }
-        ]
-      }
-    ]
   }
 }

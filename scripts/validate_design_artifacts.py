@@ -125,14 +125,14 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
         report.ok()
 
     # Report the gate state plainly, so a green run is never mistaken for an approval.
-    gate = next(
-        (n for n in ORDER if statuses.get(n, "missing") not in ("approved",)), None
-    )
-    state = (
-        f"awaiting approval of {gate}"
-        if gate
-        else "both approved — implementation may proceed"
-    )
+    if statuses.get("intent.md") != "approved":
+        state = "awaiting approval of intent.md"
+    elif "design.md" not in present:
+        state = "intent approved - design.md not written yet"
+    elif statuses.get("design.md") != "approved":
+        state = "awaiting approval of design.md"
+    else:
+        state = "both approved - implementation may proceed"
     print(f"  {rel}: {state}")
 
 
