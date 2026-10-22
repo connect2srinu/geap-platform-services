@@ -45,3 +45,8 @@ Report `passed` / `failed` / `skipped` / `unavailable` separately.
 ## Approval
 
 Gate A inline (in the PR description) and Gate E (human review). Gate F for merge.
+
+This file's front-matter `status` is **not a gate record**: it stays `draft` (or becomes
+`superseded`), including after merge. Gate A lives in the PR description and Gate E is the GitHub
+review, per `.claude/rules/sdlc-gates.md`. The validator rejects `status: approved`, `approved_by`
+and `approved_date` here, so there is never a second approval record that could disagree.
