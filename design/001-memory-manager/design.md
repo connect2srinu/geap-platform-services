@@ -33,7 +33,7 @@ confirmation is still required — at Gate B for the architect, Gate C for the s
 
 **Not done:** no call was made to a live Memory Bank. Every statement about provider behaviour that
 is not traced to the prior art is an `ASSUMPTION`, and the ones this design depends on are listed in
-[Live verification required before Gate C](#live-verification-required-before-gate-c).
+[Live verification](#live-verification).
 
 ## Summary
 
@@ -549,23 +549,55 @@ appears. Removing the redaction must make the test fail.
 | 17 | Second example config with a different topic set, served by an unchanged image |
 | 18 | Conformance suite runs the built image with the fake provider, which is permitted only when `environment: local` (refusal tested), and has a separately labelled live profile |
 
-## Live verification required before Gate C
+## Live verification
 
-The intent already requires the first item before Gate C. The design rests on all of them. Each is
-run against a real bank in the platform project, and recorded with its output:
+**Amended 2026-10-22 at the requester's instruction.** The version approved at Gate B required
+L1–L10 before Gate C. Two checks cannot run then. L10 needs two domains' service accounts bound to
+their own banks by platform Terraform (T-39), and L12 (added with DEC-5) needs the runtime deployed
+from T-40. Both exist only after Gate D. The checks are therefore split into two tiers. This note
+does not change the front-matter status; whether the amendment needs Gate B re-approval is the
+approver's decision.
 
-| # | Assumption | If false |
-|---|---|---|
-| L1 | `GenerateMemories` + `direct_memories_source` stores the given facts without extraction and still consolidates | Q4 fallback: direct `create`, no verification, shared idempotency store — re-enter design |
-| L2 | The LRO result lists affected memories by name with an action (created/updated/deleted) | Read-back falls back to `Retrieve` on the scope; quota cost rises |
-| L3 | `get` by name immediately after LRO completion reflects the consolidated content | Verification retry deadline lengthens; `written_unverified` becomes more frequent |
-| L4 | Revisions are listable and `rollback` works on a memory created by `GenerateMemories` | D3 degrades to delete-only |
-| L5 | An identical fact submitted twice consolidates into one memory | Cross-instance idempotency has no backstop — the OPEN becomes a blocker |
-| L6 | The bracketed fact prefix survives consolidation | Consolidated memories get remediated as unparseable; use provider metadata if available, else re-enter design |
-| L7 | Per-memory TTL is accepted on direct memories | C-09 becomes a declared Gap |
-| L8 | Scope-only `Retrieve` returns every memory in the scope, with pagination | Recall must cap and say so; possible contract change before release |
-| L9 | Read-after-write bound for AC13, at p99 | N is revised before release |
-| L10 | An IAM Condition can restrict the Memory Manager SA to its own domain's bank | C-16 rests on SA separation alone — security reviewer decides |
+- **Tier 1 — before the Gate C re-confirmation.** L1–L9 and L11. They can run against a provisioned
+  bank with the pinned SDK and no pattern code, using `spike/probe_memory_bank.py` (tasks.md T-24).
+- **Tier 2 — before release.** L10 and L12. They need pattern infrastructure deployed (tasks.md
+  T-45), and their evidence is a release-readiness item for `pattern-publish`.
+
+Each check is run against a real bank in the platform project and recorded with its output.
+
+| # | Tier | Assumption | If false |
+|---|---|---|---|
+| L1 | 1 | `GenerateMemories` + `direct_memories_source` stores the given facts without extraction and still consolidates | Q4 fallback: direct `create`, no verification, shared idempotency store — re-enter design |
+| L2 | 1 | The LRO result lists affected memories by name with an action (created/updated/deleted) | Read-back falls back to `Retrieve` on the scope; quota cost rises |
+| L3 | 1 | `get` by name immediately after LRO completion reflects the consolidated content | Verification retry deadline lengthens; `written_unverified` becomes more frequent |
+| L4 | 1 | Revisions are listable and `rollback` works on a memory created by `GenerateMemories`. *Extended 2026-10-21:* after a rollback, and after a delete, the superseded (prohibited) revision is no longer listable or retrievable | Rollback leaves it → delete-only (tasks.md DEC-3). Delete leaves it too → re-enter design (C-05 (a)) |
+| L5 | 1 | An identical fact submitted twice consolidates into one memory | Cross-instance idempotency has no backstop — the OPEN becomes a blocker; no C-17 exception (DEC-4) |
+| L6 | 1 | The bracketed fact prefix survives consolidation | Consolidated memories get remediated as unparseable; use provider metadata if available, else re-enter design |
+| L7 | 1 | A TTL applies to memories written by `GenerateMemories` with direct memories. *Extended 2026-10-21:* it survives a consolidation update (kept or reset, recorded which), and the memory is gone after it | C-09 takes an exception (tasks.md T-43 carries the disclosure and purge procedure) |
+| L8 | 1 | Scope-only `Retrieve` returns every memory in the scope, with pagination | Recall must cap and say so; possible contract change before release |
+| L9 | 1 | Read-after-write bound for AC13, at p99 | N is revised before release |
+| L10 | 2 | An IAM Condition can restrict the Memory Manager SA to its own domain's bank | Decided 2026-10-21: use a resource-level IAM policy on the bank if one exists; otherwise re-enter design. C-16 is non-overridable, and SA separation alone is not isolation |
+| L11 | 1 | *Added 2026-10-21, from 006 (proposed C-20):* the bank accepts a customer-managed key and reports it as its encryption key. A rejected field, an ignored field or no such field all count as no | A disclosure for every adopting domain (006 AC4), never a configuration option |
+| L12 | 2 | *Added 2026-10-21, DEC-5:* an agent on Agent Runtime reaches the service deployed with internal-only ingress | C-10: public ingress under the DEC-5 exception |
+
+### Found while writing the Tier 1 probe (2026-10-22)
+
+**VERIFIED** by introspecting `google-cloud-aiplatform` 2.3.0 (module `agentplatform`, the version
+the prior art's `control-plane-api/uv.lock` pins) in the prior art's virtual environment. This is
+**not** live evidence: it shows what the SDK can send, not what the service does.
+
+1. **There is no per-request TTL on `GenerateMemories`.** `GenerateMemoriesConfig` has no `ttl`
+   field, and `Memories` has no update method. A per-memory TTL can be set only through `create`
+   (`MemoryConfig.ttl`). For generated memories, TTL is **bank-level**:
+   `managed_semantic_memory_config.ttl_config.granular_ttl_config` holds `generate_created_ttl` and
+   `generate_updated_ttl`. L7 therefore tests the bank-level path. **Consequence — OPEN:** "Retention
+   (Q11)" says retention is per topic and set on write. With this SDK, `GenerateMemories` can't carry
+   a per-topic TTL. One bank per domain (ADR-0003) then means one retention period per domain. Not
+   resolved here; it needs a design decision.
+2. **`GenerateMemoriesConfig` also exposes `disable_memory_revisions`, `revision_ttl` and
+   `disable_consolidation`.** The first two bear on C-05 (a), because a prohibited revision might
+   never be retained. The probe records `disable_memory_revisions` as an observation under L4. The
+   third bears on L1 and L5. **Recorded, not adopted.**
 
 ## Assumptions and open questions
 
@@ -587,7 +619,7 @@ run against a real bank in the platform project, and recorded with its output:
 | O4 | `remember` latency budget | OPEN | Measured live; 30 s deadline is PROPOSED |
 | O5 | `standards/api-design.md` lacks a synchronous-write provider-429 rule | OPEN | Platform lead — a separate light-track change to the standard |
 | O6 | `policy-provider` default relaxed to `passthrough` | PROPOSED | Security reviewer — see Configuration |
-| A1 | All of L1–L10 | ASSUMPTION | Live verification before Gate C |
+| A1 | All of L1–L12 | ASSUMPTION | Tier 1 (L1–L9, L11) before the Gate C re-confirmation; Tier 2 (L10, L12) before release (amended 2026-10-22) |
 | A2 | The supplied diagram's label "one bank per agent" | VERIFIED as divergent; ADR-0003 stands | Diagram author confirmation, unchanged from the intent |
 
 ## Proposed ADRs

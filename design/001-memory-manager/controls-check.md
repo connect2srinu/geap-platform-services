@@ -2,9 +2,7 @@
 artifact: controls-check
 feature: 001-memory-manager
 track: full
-status: approved
-approved_by: Srinivasa reddy
-approved_date: 2026-10-21
+status: draft
 ---
 
 # Controls assessment — Memory Manager v0.1.0: a governed write path for agent memory
@@ -31,27 +29,60 @@ Produced on 2026-10-21 on branch `design/001-memory-manager` at `32174bb`. Read 
 exists. In this document `Implemented, not verified` means *specified in the approved design*,
 which is what the skill prescribes at design stage. Nothing is `Verified`.
 
-**Not done:** no call to a live Memory Bank. See the precondition below.
+**Not done:** no call to a live Memory Bank. See the live verification status below.
 
-## Precondition not met — live verification
+## Recheck — 2026-10-22 (draft, for the Gate C re-confirmation)
 
-The approved design's section "Live verification required before Gate C" lists L1–L10, and the
-intent requires L1 before Gate C. **VERIFIED**: no record of any live run exists in the design
-folder or the repository. C-05, C-09, C-16 and C-17 rest on L1, L4, L5, L7 and L10. The security
-reviewer decides whether Gate C can be approved with these outstanding, or must wait for them. This
-assessment does not assume their outcome.
+**Base:** `54bfa9f`, the commit that recorded this assessment as approved (Srinivasa reddy,
+2026-10-21). It is compared with branch `design/001-memory-manager` at `50c6465`, plus the uncommitted
+`design.md` and `tasks.md` amendments and `spike/` of 2026-10-22. **Read:** `git diff --name-only
+54bfa9f...HEAD`, tasks.md DEC-1 to DEC-11, design.md "Live verification", `.github/workflows/security.yml`,
+PR #1's checks at `50c6465` (job logs fetched with `gh api …/actions/jobs/<id>/logs`), and the
+`agentplatform` surface of `google-cloud-aiplatform` 2.3.0, by introspection only.
+
+**This recheck returns the assessment to `draft`.** The approval of 2026-10-21 is preserved in git
+at `54bfa9f`. Only the security reviewer sets `approved` again.
+
+| Change since `54bfa9f` | Controls |
+|---|---|
+| The requester accepted the recommendations for the nine Gaps (2026-10-21): DEC-1, DEC-3, DEC-4, DEC-5 and DEC-6 decided in tasks.md | C-05, C-06, C-08, C-10, C-11, C-16, C-17, C-19 |
+| DEC-2 (audit failure semantics) and DEC-7 (local trust anchor) decided | C-07, C-01 |
+| L4 and L7 extended, L12 added, and live verification split into Tier 1 and Tier 2 | C-05, C-09, C-10, C-16, C-17 |
+| SDK introspection: no per-request TTL on `GenerateMemories` | C-09 |
+| Change 003 merged: secret-scanning permissions fixed, so gitleaks now runs | C-08 |
+| Change 005 merged: the pre-existing Checkov failure is gone | C-15 |
+| T-05 planned: the dependency scan covers the pattern lockfile | C-13 |
+
+**Rechecked:** C-01, C-05, C-06, C-07, C-08, C-09, C-10, C-11, C-13, C-15, C-16, C-17, C-19.
+**Carried forward unchanged:** C-02, C-03, C-04, C-12, C-18, and C-14 (not applicable). C-18 gains
+`audit_emission_failures` (DEC-2) and a `remediations` alert (T-39); its status is unaffected.
+
+**A control this recheck moves from `Gap` to `Implemented, not verified`** is closed by a decision
+recorded in `tasks.md`, which is still a draft (Gate D held). If Gate D is not approved as written,
+that control returns to `Gap`.
+
+## Live verification status (rechecked 2026-10-22)
+
+The design's live checks are now split into two tiers (design.md "Live verification", amended
+2026-10-22 at the requester's instruction). **Tier 1** (L1–L9, L11) runs before this
+re-confirmation, using `spike/probe_memory_bank.py` (tasks.md T-24). **Tier 2** (L10, L12) needs
+deployed pattern infrastructure and runs before release (T-45). **VERIFIED**: no live run exists yet;
+the probe is written and has not been run. Exceptions that depend on Tier 1 are marked **pending**
+below. The security reviewer approves them after the T-24 record exists, or decides explicitly to
+approve them before it.
 
 ## Summary
 
 | Status | Count |
 |---|---|
 | Verified | 0 |
-| Implemented, not verified | 9 |
-| Gap | 9 |
+| Implemented, not verified | 14 |
+| Gap | 4 |
 | Not applicable | 1 |
 | Exception approved | 0 |
 
-Total 19. Gaps: C-05, C-06, C-09, C-10, C-11, C-13, C-16, C-17, C-19.
+Total 19. Gaps: C-05, C-09, C-17, C-19. Moved out of `Gap` by this recheck: C-06, C-10, C-11, C-13,
+C-16. At the approval of 2026-10-21: 9 implemented-not-verified, 9 Gaps.
 
 ## Non-overridable controls — can configuration switch one off?
 
@@ -79,10 +110,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Every caller is authenticated. Deployed environments require a Google-signed ID token mapped to exactly one registered caller. Development header shortcuts are refused outside local environments, not merely defaulted off. |
 | **Applicability** | Applies. The design adds two authenticated operations (`/v1/remember`, `/v1/recall`) and a second, end-user token (D2). |
-| **Implementation** | Design: `src/api` verifies the agent ID token (audience = service URL) and maps it to exactly one entry in the new `callers[]` configuration. Otherwise `401 UNAUTHENTICATED` or `403 CALLER_NOT_REGISTERED`. `X-End-User-Token` is verified against `endUserIdentity` (issuer, JWKS, audiences, expiry). JWKS is cached with a bounded TTL and there is no fallback to unsigned tokens (`401 END_USER_TOKEN_INVALID`). The design has no development header shortcut. The fake provider is permitted only with `environment: local`. `/healthz` is unauthenticated and reveals nothing. Requirements from this assessment: `endUserIdentity` is required in the schema; `environment: local` is refused on Cloud Run. |
-| **Verification** | Unit/conformance tests: no token → 401; wrong audience → 401; valid token, unregistered principal → 403; token mapping to two callers rejected at configuration load; end-user token expired / wrong issuer / wrong audience / bad signature / `alg: none` → 401; JWKS unreachable after cache expiry → 401; `environment: local` with `K_SERVICE` set → startup refusal; configuration without `endUserIdentity` → schema rejection. |
+| **Implementation** | Design: `src/api` verifies the agent ID token (audience = service URL) and maps it to exactly one entry in the new `callers[]` configuration. Otherwise `401 UNAUTHENTICATED` or `403 CALLER_NOT_REGISTERED`. `X-End-User-Token` is verified against `endUserIdentity` (issuer, JWKS, audiences, expiry). JWKS is cached with a bounded TTL and there is no fallback to unsigned tokens (`401 END_USER_TOKEN_INVALID`). The design has no development header shortcut. The fake provider is permitted only with `environment: local`. `/healthz` is unauthenticated and reveals nothing. Requirements from this assessment: `endUserIdentity` is required in the schema; `environment: local` is refused on Cloud Run. **Recheck:** DEC-7 (decided 2026-10-21) adds a local-only trust anchor for agent tokens (a configurable issuer and JWKS), so that the conformance suite can authenticate against a locally built image. It is guarded exactly like the fake provider: allowed only with `environment: local`, and refused when `K_SERVICE` is set. |
+| **Verification** | Unit/conformance tests: no token → 401; wrong audience → 401; valid token, unregistered principal → 403; token mapping to two callers rejected at configuration load; end-user token expired / wrong issuer / wrong audience / bad signature / `alg: none` → 401; JWKS unreachable after cache expiry → 401; `environment: local` with `K_SERVICE` set → startup refusal; configuration without `endUserIdentity` → schema rejection. DEC-7 condition: `conformance/test_local_trust_refused.py` (T-37) asserts, in the deployed profile, that a token signed by the local issuer gets `401`, and that the built image refuses to start with `environment: local` and `K_SERVICE` set. |
 | **Status** | Implemented, not verified |
-| **Evidence** | Design only (`design.md` "Request headers", "Failure handling"). No code, no tests. |
+| **Evidence** | Design, plus tasks.md DEC-7. No code, no tests. |
 
 ### C-02 — Authorization fails closed
 
@@ -123,10 +154,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Data is classified before persistence; sensitive and restricted values are redacted or refused per domain policy. The classifier is a domain extension; the obligation is platform and defaults to deny-all. |
 | **Applicability** | Applies. This is the core of the feature. Provider consolidation (D6) can also create content the service never classified. |
-| **Implementation** | Before write: per-fact topic eligibility + field schema + `basis` rule + `pii-classifier` (default `deny-all`, failure `deny`). After write: every created or updated memory is read back and re-classified by the same instance, then rolled back if the prior revision is clean, otherwise deleted (D3). At recall: re-classified and withheld on failure. |
-| **Verification** | Test: default classifier → nothing written. Test: classifier raises → fact rejected. AC6 test (prohibited value on an eligible topic). AC11 test with a fake provider that rewrites on consolidation. Test: recall withholds a prohibited memory. Live: L1, L4, L6. |
+| **Implementation** | Before write: per-fact topic eligibility + field schema + `basis` rule + `pii-classifier` (default `deny-all`, failure `deny`). After write: every created or updated memory is read back and re-classified by the same instance, then rolled back if the prior revision is clean, otherwise deleted (D3). At recall: re-classified and withheld on failure. **Recheck:** (a) DEC-3 (decided): delete is the default remediation. Rollback (T-27) is built only if L4 shows that a rollback leaves no listable or retrievable prohibited revision. If delete leaves one too, re-enter design. The SDK exposes `disable_memory_revisions` and `revision_ttl` on `GenerateMemoriesConfig` (**VERIFIED** by introspecting 2.3.0, not live); the probe observes the first under L4, and neither is adopted. (b) is accepted as an exception (below). Its compensating controls: read-back and re-classification of every touched memory (T-25), recall-time re-classification and withholding (T-33), `written_unverified`, and a per-domain `remediations` alert (T-39). |
+| **Verification** | Test: default classifier → nothing written. Test: classifier raises → fact rejected. AC6 test (prohibited value on an eligible topic). AC11 test with a fake provider that rewrites on consolidation. Test: recall withholds a prohibited memory. Live: L1, L4, L6. Tier 1 live: L1, L2, L3, L4 (extended) and L6, with `spike/probe_memory_bank.py` (T-24). |
 | **Status** | Gap |
-| **Evidence** | Two gaps in the design, neither covered by an approved exception: **(a)** *Rolled-back content persists in revision history.* Rollback (D3) restores a prior revision, but the prohibited revision presumably stays listable through the revisions API. That means prohibited content stays persisted in the bank. The design does not say whether revisions can be purged, and L4 does not test for it. **(b)** *A window of persistence.* Prohibited content exists in the bank between consolidation and remediation. When verification is incomplete (D5), it stays there until the next recall of that scope. Recall-time withholding stops it being *returned*, but not *persisted*. The reviewer must decide whether (b) is acceptable, which is Q5 at Gate C. |
+| **Evidence** | (a) is closed in the plan by DEC-3; the outcome depends on L4, which has not run. (b) stays a Gap until its exception is approved. That row is **pending Tier 1 (L1–L3)**, because its compensating controls rely on the read-back that L2 and L3 test. **VERIFIED**: no `live-verification.md` exists. |
 
 ### C-06 — Logging restrictions
 
@@ -134,10 +165,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Memory content, PII, secrets and full auth headers never reach logs, traces or error responses. |
 | **Applicability** | Applies. New logs, spans, audit events, error bodies, and a new secret-like header (`X-End-User-Token`). |
-| **Implementation** | Design: logs carry topic name, decision, reason code and counts. Never a value, the fact string, the subject or either token. Span attributes follow the prohibited-field list. Errors are `{code, message, correlation_id}` with no payload content. Responses never echo a value. `end_user_token` is added to `prohibitedLogFields`. Sentinel test across logs, spans, audit and error bodies (AC15). Requirement from this assessment: FastAPI's default `RequestValidationError` response includes the offending `input` value, so it must be replaced by the `400 REQUEST_INVALID` handler, and the sentinel suite must include a schema-invalid request carrying a sentinel. The same applies to provider exception text (`provider_error_body`). |
-| **Verification** | AC15 sentinel test, failing if redaction is removed; it includes schema-invalid requests, classifier errors and provider errors. A test that `logLevel: DEBUG` emits no sentinel. |
-| **Status** | Gap |
-| **Evidence** | Internal contradiction in the approved design: "Observability → Logs" says never log "the subject". But "Audit events" carries the **scope identifier** with every event, and under the default `subject-passthrough` resolver the scope identifier **is** the token subject: the end user's identifier at the identity provider. The audit sink is Cloud Logging. Whether an end-user identifier may appear in the audit sink — raw, pseudonymised (for example HMAC with a key from Secret Manager), or not at all — is a reviewer decision. It is not recorded anywhere. |
+| **Implementation** | Design: logs carry topic name, decision, reason code and counts. Never a value, the fact string, the subject or either token. Span attributes follow the prohibited-field list. Errors are `{code, message, correlation_id}` with no payload content. Responses never echo a value. `end_user_token` is added to `prohibitedLogFields`. Sentinel test across logs, spans, audit and error bodies (AC15). Requirement from this assessment: FastAPI's default `RequestValidationError` response includes the offending `input` value, so it must be replaced by the `400 REQUEST_INVALID` handler, and the sentinel suite must include a schema-invalid request carrying a sentinel. The same applies to provider exception text (`provider_error_body`). **Recheck:** DEC-1 (decided 2026-10-21): the audit scope identifier is HMAC-SHA256 of the subject, keyed from one Secret Manager secret exposed as a Cloud Run Secret Manager reference. The raw subject never reaches an audit event, and a deployed instance without the key refuses to start (T-09, T-12). |
+| **Verification** | AC15 sentinel test, failing if redaction is removed; it includes schema-invalid requests, classifier errors and provider errors. A test that `logLevel: DEBUG` emits no sentinel. T-12: a sentinel subject never appears in any event, and the same subject yields the same pseudonym under one key. T-09: deployed without the key → refusal. |
+| **Status** | Implemented, not verified |
+| **Evidence** | Design, plus tasks.md DEC-1. Takes effect with Gate D. If Gate D is not approved as written, this returns to Gap. No code, no tests. |
 
 ### C-07 — Audit completeness
 
@@ -145,10 +176,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Every memory write, deletion, denial and policy decision emits an audit event with a correlation ID to the platform audit sink. |
 | **Applicability** | Applies. |
-| **Implementation** | Design "Audit events" table: `memory_write` (per touched memory; `written`/`unknown`), `policy_denial` (request-level and per rejected fact), `memory_rollback`, `memory_deletion`, `verification_incomplete`, `remediation_failed`, `recall_withheld`, `configuration_change`. The sink is platform-owned Terraform in `infrastructure/terraform/memory-bank-nfr` (**VERIFIED**: empty today). The manifest's `requiredAuditEvents` is extended. **Not specified by the design, carried here as an implementation requirement:** what happens when audit emission itself fails. To fail closed, a write whose `memory_write` event cannot be emitted must not be reported as `written`. If emission goes to stdout and the sink routes it by log name, the emitting path and its failure semantics must be stated in the implementation plan. |
-| **Verification** | One test per event type, with correlation ID and reason code present and the sentinel absent (AC16). Terraform review: the sink filter matches the dedicated log name, and the domain's SA cannot modify the sink. |
+| **Implementation** | Design "Audit events" table: `memory_write` (per touched memory; `written`/`unknown`), `policy_denial` (request-level and per rejected fact), `memory_rollback`, `memory_deletion`, `verification_incomplete`, `remediation_failed`, `recall_withheld`, `configuration_change`. The sink is platform-owned Terraform in `infrastructure/terraform/memory-bank-nfr` (**VERIFIED**: empty today). The manifest's `requiredAuditEvents` is extended. **Not specified by the design, carried here as an implementation requirement:** what happens when audit emission itself fails. To fail closed, a write whose `memory_write` event cannot be emitted must not be reported as `written`. If emission goes to stdout and the sink routes it by log name, the emitting path and its failure semantics must be stated in the implementation plan. **Recheck:** the implementation plan now states the failure semantics (DEC-2, decided 2026-10-21). Events are written synchronously to a dedicated log name through the Cloud Logging API. If a `memory_write` event fails, the outcome is downgraded to `written_unverified`, a CRITICAL fallback line with no values goes to stdout, and `audit_emission_failures` is counted. The scope identifier is pseudonymised (DEC-1). |
+| **Verification** | One test per event type, with correlation ID and reason code present and the sentinel absent (AC16). Terraform review: the sink filter matches the dedicated log name, and the domain's SA cannot modify the sink. T-12: emission failure follows DEC-2. |
 | **Status** | Implemented, not verified |
-| **Evidence** | Design only. |
+| **Evidence** | Design, plus tasks.md DEC-2. No code. |
 
 ### C-08 — Secret handling
 
@@ -156,10 +187,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Secrets are referenced by name and resolved from Secret Manager at runtime. Never in source, images, Terraform variables, logs or committed `.env`. |
 | **Applicability** | Applies. The design removes the manifest's `MEMORY_BANK_CREDENTIALS` secret in favour of Workload Identity. The end-user token is a credential handled in transit. |
-| **Implementation** | Design: Workload Identity for the provider; `spec.secrets` emptied; `roles/secretmanager.secretAccessor` removed. The JWKS is public and needs no secret. The end-user token is never logged (C-06). If C-06 chooses HMAC pseudonymisation, that key becomes a Secret Manager secret and the secret access role returns, scoped to that one secret. |
-| **Verification** | CI secret scanning (gitleaks) on every PR; a repository test forbidding credential-shaped literals; manifest review that `spec.secrets` holds no provider credential. |
+| **Implementation** | Design: Workload Identity for the provider; `spec.secrets` emptied; `roles/secretmanager.secretAccessor` removed. The JWKS is public and needs no secret. The end-user token is never logged (C-06). If C-06 chooses HMAC pseudonymisation, that key becomes a Secret Manager secret and the secret access role returns, scoped to that one secret. **Recheck:** DEC-1 chooses HMAC, so the key is one Secret Manager secret. It reaches the container as a Cloud Run Secret Manager reference, never as a Terraform variable or an image layer. `roles/secretmanager.secretAccessor` is bound on that secret only (T-40), and the secret is declared under `spec.secrets` (T-41). |
+| **Verification** | CI secret scanning (gitleaks) on every PR; a repository test forbidding credential-shaped literals; manifest review that `spec.secrets` holds no provider credential. T-40 Terraform check: the binding is on the secret resource, not the project. |
 | **Status** | Implemented, not verified |
-| **Evidence** | **VERIFIED** failure: PR #1's `Secret scanning` job (run 39695758417) failed with `403 Resource not accessible by integration` on `GET /repos/.../pulls/1/commits`. gitleaks did not scan, so this produced **no evidence**. It is a workflow permissions defect in `.github/workflows/security.yml`, which grants only `contents: read`. It is unrelated to this feature and reported, not fixed (CLAUDE.md rule 11). |
+| **Evidence** | **VERIFIED**: change 003 (merged as `c577d52`) fixed the workflow permissions defect. On PR #1 at `50c6465`, `Secret scanning` passed: gitleaks reported `10 commits scanned` and `No leaks detected` (job 119642927095). That shows the branch holds no secret today. Correct handling of the HMAC key needs T-40 and T-41. |
 
 ### C-09 — Classification and retention declared and enforced
 
@@ -167,10 +198,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Data classification and retention are declared in configuration, and retention is enforced. |
 | **Applicability** | Applies. The design adds per-topic `classification` and `retentionDays`. |
-| **Implementation** | Per-topic `retentionDays`, bounded by a platform maximum in the schema. Enforcement uses a per-memory provider TTL set on write. |
-| **Verification** | Schema test: `retentionDays` above the maximum rejected. Fake-client test: the TTL is sent on every write. Live: L7, and expiry observed. |
+| **Implementation** | Per-topic `retentionDays`, bounded by a platform maximum in the schema. Enforcement uses a per-memory provider TTL set on write. **Recheck:** L7 is extended: the TTL must survive consolidation, and expiry is observed. **VERIFIED by introspecting SDK 2.3.0, not live:** `GenerateMemoriesConfig` has no per-request `ttl`, and `Memories` has no update method. TTL for generated memories is bank-level (`ttl_config.granular_ttl_config.generate_created_ttl` / `generate_updated_ttl`). So the approved design's per-topic `retentionDays`, set on write, cannot be carried by `GenerateMemories` with this SDK. One bank per domain means one retention period per domain. |
+| **Verification** | Schema test: `retentionDays` above the maximum rejected (T-07). Tier 1 live: L7 (T-24), against a bank with generate TTLs, with expiry observed. |
 | **Status** | Gap |
-| **Evidence** | Enforcement depends on L7 (provider TTL on direct memories), which is **ASSUMPTION** and unverified. The bound values are **OPEN** pending Legal (Q11). The design states that C-09 becomes a declared Gap if no TTL is available. Also unspecified: whether consolidation updating a memory resets, keeps or drops its TTL. |
+| **Evidence** | Two open items. (1) **Pending Tier 1 (L7):** whether the bank-level TTL applies, survives consolidation and expires memories. If L7 fails, the contingent exception below applies. (2) **OPEN — a design decision:** per-topic retention cannot be expressed on the write path with SDK 2.3.0. Even if L7 passes, enforcement is per domain, not per topic, unless the design changes (for example, a domain-wide retention equal to the shortest topic retention, or one bank per retention class). L7 alone cannot close this. The bounds are still OPEN with Legal (DEC-8). |
 
 ### C-10 — Minimal network exposure
 
@@ -178,10 +209,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Internal ingress by default; public ingress requires an approved exception. |
 | **Applicability** | Applies. The design adds an HTTP service on Cloud Run. |
-| **Implementation** | **Not specified in the approved design.** The container view shows agents on "Cloud Run / Agent Runtime" calling the service, but no ingress setting is stated. |
-| **Verification** | Checkov on `infrastructure/terraform/domain-runtime`; a Terraform test asserting `ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"` (or internal + load balancer) on the service. |
-| **Status** | Gap |
-| **Evidence** | The design is silent. It also matters whether an agent on Agent Runtime can reach an internal-only Cloud Run service (for example through Private Service Connect or VPC egress). If not, public ingress needs an exception. Open question for the platform architect and security reviewer. |
+| **Implementation** | DEC-5 (decided 2026-10-21): `INGRESS_TRAFFIC_INTERNAL_ONLY` on the Cloud Run service (T-40). No `allUsers` or `allAuthenticatedUsers` invoker: `run.invoker` is held only by the registered agent service accounts. |
+| **Verification** | T-40 Terraform checks: ingress is internal-only and no public principal holds the invoker role. Checkov. Tier 2 live: L12 (T-45), before release. |
+| **Status** | Implemented, not verified |
+| **Evidence** | Plan only (tasks.md DEC-5, T-40). Reachability from Agent Runtime is unverified (L12, Tier 2). If L12 fails, public ingress takes the DEC-5 exception, with compensating controls: IAM-only invocation by registered agent service accounts, in-app token verification (C-01) and the per-caller rate limit (T-31). That exception would be recorded before release, not at this gate. |
 
 ### C-11 — Least-privilege IAM
 
@@ -189,10 +220,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | One service account per component, least privilege, no primitive roles. Memory Bank access is granted to the Memory Manager service account only — never to an agent — constrained by IAM Conditions on scope where supported. |
 | **Applicability** | Applies. The design changes `spec.cloudPermissions` and the Memory Bank binding. |
-| **Implementation** | Design: one component, `api`, with `roles/logging.logWriter`, `roles/cloudtrace.agent` and `roles/monitoring.metricWriter`; the Pub/Sub and Secret Manager roles and the `worker` component are removed. The Memory Bank role is granted by platform Terraform (`memory-bank-nfr`) to the domain's Memory Manager SA only. |
-| **Verification** | Checkov; a repository test asserting no `roles/owner`, `roles/editor` or `roles/viewer` in any module or manifest; Terraform review that no agent principal appears in a bank binding. |
-| **Status** | Gap |
-| **Evidence** | The Memory Bank role is **OPEN** (O3), and the design defers it to this gate. This assessment does not invent one. Predefined roles such as `roles/aiplatform.user` grant far more than memory operations (**ASSUMPTION** — confirm against current IAM docs). The likely least-privilege answer is a custom role holding only the memory permissions the design uses: generate, get, list revisions, rollback, delete, retrieve. Needs an owner and a decision. **VERIFIED** today: `pattern.yaml` still lists Pub/Sub, `secretAccessor` and a `worker` component; the design removes them. |
+| **Implementation** | Design: one component, `api`, with `roles/logging.logWriter`, `roles/cloudtrace.agent` and `roles/monitoring.metricWriter`; the Pub/Sub and Secret Manager roles and the `worker` component are removed. The Memory Bank role is granted by platform Terraform (`memory-bank-nfr`) to the domain's Memory Manager SA only. **Recheck:** DEC-6 (decided): a custom role holding only generate, get, retrieve and delete, plus list-revisions and rollback only if T-27 is built. HMAC adds `secretAccessor`, on one secret only (C-08). |
+| **Verification** | Checkov; a repository test asserting no `roles/owner`, `roles/editor` or `roles/viewer` in any module or manifest; Terraform review that no agent principal appears in a bank binding. T-39: a check that the custom role holds no permission outside the DEC-6 list. T-45 runs under that role. |
+| **Status** | Implemented, not verified |
+| **Evidence** | Plan only. **VERIFIED** today: `pattern.yaml` still lists Pub/Sub, `secretAccessor` and a `worker` component; T-41 removes them. The exact permission names come from the IAM permission reference, in T-39. |
 
 ### C-12 — Container hardening
 
@@ -211,10 +242,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Dependencies are pinned, lockfiles committed, and scanned for known vulnerabilities on every PR. |
 | **Applicability** | Applies. The implementation adds the pattern's first runtime dependencies (FastAPI per ADR-0002, the `agentplatform` 2.x SDK, a JWT/JWKS library) and a `uv.lock`, which the Dockerfile already expects. |
-| **Implementation** | Design: `spec.compatibility.memoryBankSdk` pinned to the range verified live. |
+| **Implementation** | T-05 extends the `Dependency vulnerabilities` job to audit `patterns/*/uv.lock`, in the same PR that adds the lockfile (T-02). The SDK is pinned provisionally at `google-cloud-aiplatform[agent_engines]==2.3.0` (DEC-11). |
 | **Verification** | pip-audit (or equivalent) over the pattern's lockfile on every PR. |
-| **Status** | Gap |
-| **Evidence** | **VERIFIED**: the `Dependency vulnerabilities` job in `.github/workflows/security.yml` audits only `scripts/requirements.txt`, so pattern dependencies would not be scanned. Extending that job to cover `patterns/*/uv.lock` is in scope for this feature, because this feature introduces the dependencies. It must be a task in `tasks.md`. |
+| **Status** | Implemented, not verified |
+| **Evidence** | **VERIFIED** 2026-10-22: `.github/workflows/security.yml` still audits only `scripts/requirements.txt` (`inputs: scripts/requirements.txt`). The pattern has no lockfile yet, so nothing goes unscanned today. T-05 must land with T-02. |
 
 ### C-15 — Infrastructure as code, policy-scanned
 
@@ -225,7 +256,7 @@ carried as implementation requirements under C-01 and C-02:
 | **Implementation** | Both modules are reference Terraform, validated with `terraform init -backend=false` + `validate` and scanned by Checkov in CI. |
 | **Verification** | `Terraform / Format and validate` and `Security / Infrastructure policy scan` passing on the PR that adds the modules. |
 | **Status** | Implemented, not verified |
-| **Evidence** | No module exists yet. **VERIFIED**: on PR #1, `Infrastructure policy scan` is currently **failing** on pre-existing `templates/terraform-gcp/main.tf` (CKV_GCP_83, CSEK on `google_pubsub_topic.writes` / `.dead_letter`). That code is outside this feature and is reported, not fixed. While it fails, the scan cannot serve as evidence for the new modules. |
+| **Evidence** | No module exists yet. **VERIFIED**: change 005 (merged as `107f2a6`) removed the pre-existing Checkov failure (CKV_GCP_83 in `templates/terraform-gcp/main.tf`). On PR #1 at `50c6465`, `Infrastructure policy scan` passed with `Passed checks: 1, Failed checks: 0, Skipped checks: 0` (job 119642927062). The scan can now serve as evidence for the new modules when T-39 and T-40 add them. |
 
 ### C-16 — Domain isolation
 
@@ -233,10 +264,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | In a shared project, isolation is by per-domain service account and IAM Conditions on scope. One domain cannot read or write another's memory. |
 | **Applicability** | Applies. ADR-0003: one platform project, one bank per domain. |
-| **Implementation** | The bank resource name comes from deployment configuration, an output of platform Terraform. No request field selects it (AC14). One SA per domain, bound to that domain's bank only, with an IAM Condition on the bank resource. |
-| **Verification** | Test: no request field can change the bank. Live: domain A's SA is denied on domain B's bank (L10), with the output recorded. |
-| **Status** | Gap |
-| **Evidence** | Isolation rests on L10 (whether an IAM Condition can restrict an SA to one bank), which is **unverified**. If L10 is false, the design says isolation rests on SA separation alone and the security reviewer decides. That decision has not been made. A unit test cannot prove this control (`evidence-and-claims.md` "Managed services"). |
+| **Implementation** | The bank resource name comes from deployment configuration, an output of platform Terraform. No request field selects it (AC14). One SA per domain, bound to that domain's bank only, with an IAM Condition on the bank resource. **Recheck:** decided 2026-10-21, with no exception. If L10 fails, use a resource-level IAM policy on the bank if the provider has one; otherwise re-enter design. |
+| **Verification** | Test: no request field can change the bank. Tier 2 live: L10 (T-45), before release, with the output recorded. |
+| **Status** | Implemented, not verified |
+| **Evidence** | Plan only. L10 is Tier 2 and cannot run until T-39 is applied for two domains. A unit test cannot prove this control (`evidence-and-claims.md` "Managed services"); `Verified` requires the T-45 record. |
 
 ### C-17 — Bounded retry, backoff, dead-lettering, idempotency
 
@@ -244,10 +275,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Bounded retry, exponential backoff, dead-lettering and idempotency. Retry must not amplify load against a rate-limited dependency. |
 | **Applicability** | Applies, except the dead-lettering clause: v0.1.0 has no queue (D1), so there is nothing to dead-letter. That clause is not applicable for this reason and returns with v0.2.0's queue. |
-| **Implementation** | Write: at most 2 retries, exponential backoff with full jitter, honouring provider `Retry-After`, 10 s deadline. Read-back: 3 attempts, 5 s deadline. Each retry consumes a domain budget token, so retries cannot exceed the budget. The provider's 429 is mapped to `503 PROVIDER_UNAVAILABLE` + `Retry-After`. Idempotency: a required `Idempotency-Key` and a per-instance LRU (10 min) that replays responses or returns 422 on payload mismatch. |
-| **Verification** | Test: injected provider 429 → bounded attempts, then 503, with no further calls (fake records the count). Test: each retry consumes a budget token. Test: same key on the same instance → identical response, one provider call. Test: same key, different payload → 422. Live: L5. |
+| **Implementation** | Write: at most 2 retries, exponential backoff with full jitter, honouring provider `Retry-After`, 10 s deadline. Read-back: 3 attempts, 5 s deadline. Each retry consumes a domain budget token, so retries cannot exceed the budget. The provider's 429 is mapped to `503 PROVIDER_UNAVAILABLE` + `Retry-After`. Idempotency: a required `Idempotency-Key` and a per-instance LRU (10 min) that replays responses or returns 422 on payload mismatch. **Recheck:** DEC-4 (decided): the cross-instance limit takes the exception below, recorded only after L5 passes. An added compensating control: Cloud Run session affinity (T-40). |
+| **Verification** | Test: injected provider 429 → bounded attempts, then 503, with no further calls (fake records the count). Test: each retry consumes a budget token. Test: same key on the same instance → identical response, one provider call. Test: same key, different payload → 422. Tier 1 live: L5 (T-24). |
 | **Status** | Gap |
-| **Evidence** | Idempotency across instances is **not guaranteed** (design O1). A duplicate on a different instance relies on provider consolidation deduplicating it (L5, unverified), and a reused key with a different payload is not detected. The design offered two options: an exception with expiry v0.2.0, or a shared store, which means returning to Stage 1. **The Gate B approval commit (`32174bb`) changed only front matter and records no decision on O1.** No exception has been given to this assessment, so none is recorded. |
+| **Evidence** | The exception row below is **pending Tier 1 (L5)**. If L5 fails, there is no exception and the design re-enters Stage 2 (DEC-4). |
 
 ### C-18 — Required telemetry
 
@@ -266,10 +297,10 @@ carried as implementation requirements under C-01 and C-02:
 |---|---|
 | **Requirement** | Shared-quota contention between domains is bounded by per-domain budgets, and cost is attributable per domain. |
 | **Applicability** | Applies. ADR-0003's shared quota is the design's main stated operational risk. Every write now also costs read-back and possibly remediation calls. |
-| **Implementation** | A per-domain token bucket (`domainProviderRequestsPerMinute`, schema-bounded). Every provider request takes a token. `503 DOMAIN_BUDGET_EXHAUSTED` when the bucket is empty. `quota_consumed{domain}` provides attribution. |
-| **Verification** | Test: a domain over budget gets 503 locally and the fake provider sees no further calls. Terraform review: `max_instances` is set and the per-instance budget is the domain budget ÷ `max_instances`. |
+| **Implementation** | A per-domain token bucket (`domainProviderRequestsPerMinute`, schema-bounded). Every provider request takes a token. `503 DOMAIN_BUDGET_EXHAUSTED` when the bucket is empty. `quota_consumed{domain}` provides attribution. **Recheck:** one Terraform variable sets both `max_instances` and the container's `MAX_INSTANCES`. The per-instance bucket is the domain budget ÷ `MAX_INSTANCES`. A deployed instance without `MAX_INSTANCES`, or with a budget below it, refuses to start (T-09, T-22, T-40). A platform-owned per-domain quota alert (T-39). |
+| **Verification** | Tests: over budget → `503` locally and no further provider calls (T-22); the bucket is budget ÷ `MAX_INSTANCES` (T-22); refusal without `MAX_INSTANCES` (T-09). Terraform check: one variable feeds both values (T-40). |
 | **Status** | Gap |
-| **Evidence** | The governor is **per instance** (design O2). The effective ceiling is budget × live instances, bounded only if `max_instances` is set and the division is done correctly. A domain could raise `max_instances` in its own Terraform (domain-owned) and so exceed its share of the shared quota. Whether that bound is acceptable depends on the same decision as O1, which is not recorded. Quota *alerting* is platform-owned and survives a fork; the *budget* does not. |
+| **Evidence** | The per-instance limit remains: a domain that forks its Terraform can still raise both values together. DEC-4 accepts this through the exception below. That row does **not** depend on Tier 1 and is ready for the security reviewer. |
 
 ## Non-applicable controls
 
@@ -284,28 +315,44 @@ queue-depth and dead-letter-depth metrics, because v0.1.0 has no queue (D1).
 
 | Control | Gap | Risk | Plan | Owner |
 |---|---|---|---|---|
-| C-05 | (a) Rolled-back prohibited revision stays in revision history; (b) prohibited content persists between consolidation and remediation, indefinitely when verification is incomplete | Restricted content (for example health data) persisted in the bank despite classification | Add to L4: can a revision be purged, and does delete remove all revisions? If revisions can't be purged, prefer delete over rollback for prohibited content. Reviewer decides on (b) (Q5) | Security reviewer + platform architect |
-| C-06 | Audit events carry the scope identifier, which by default is the end user's token subject | End-user identifier in Cloud Logging | Decide: raw, pseudonymised (HMAC, key in Secret Manager), or omitted; amend design if changed | Security reviewer |
-| C-09 | Retention enforcement depends on unverified provider TTL (L7); bounds OPEN (Q11); TTL behaviour on consolidation unknown | Data kept beyond policy | Run L7; obtain Legal bounds; if no TTL, a scheduled deletion path means returning to design | Platform lead + Legal |
-| C-10 | Ingress not specified; reachability from Agent Runtime to an internal-only service unknown | Public exposure of the memory API | Specify ingress in the design / `domain-runtime` Terraform; confirm reachability; exception if public ingress is unavoidable | Platform architect + security reviewer |
-| C-11 | Memory Bank IAM role undecided (O3) | Over-broad role on the SA | Select the narrowest role (likely custom) from the memory permissions the design uses; record it in `memory-bank-nfr` | Platform architect + security reviewer |
-| C-13 | CI dependency scan covers only `scripts/requirements.txt` | Vulnerable pattern dependency ships unscanned | Task in `tasks.md`: extend the scan to the pattern lockfile in the same PR that adds it | Platform lead |
-| C-16 | IAM Condition per bank unverified (L10) | One domain's SA reaching another's bank | Run L10 live and record the output; if false, reviewer decides whether SA separation alone suffices | Security reviewer |
-| C-17 | No cross-instance idempotency (O1); reliance on consolidation dedup (L5) unverified | Duplicate writes; undetected key reuse | Run L5; then either an exception with expiry at v0.2.0 or a shared store (return to Stage 1) | Platform architect |
-| C-19 | Per-instance budget; domain-owned `max_instances` can exceed share | One domain exhausting shared quota | Same decision as O1; consider a platform-owned max-instance constraint or a platform-side quota alert with a paging threshold | Platform architect |
+| C-05 | (b) Prohibited content persists between consolidation and remediation, and until the next recall when verification is incomplete. (a) is closed in the plan by DEC-3; its outcome comes from L4 | Restricted content persisted in the bank despite classification | Exception (row below), **pending Tier 1 L1–L3**. Run T-24 | Security reviewer |
+| C-09 | Bank-level TTL unverified (L7). Per-topic retention cannot be expressed on the write path with SDK 2.3.0. Bounds OPEN (Q11) | Data kept beyond policy | Run L7 (T-24). Decide retention granularity, which is a design change. Obtain the Legal bounds. Contingent exception only if L7 fails | Platform architect + Legal + security reviewer |
+| C-17 | No cross-instance idempotency or key-reuse detection | Duplicate writes; undetected key reuse | Exception (row below), **pending Tier 1 L5** | Platform architect + security reviewer |
+| C-19 | Per-instance budget; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together | One domain exhausting shared quota | Exception (row below); not Tier-1-dependent | Platform architect + security reviewer |
+
+Closed by the plan since 2026-10-21, and now `Implemented, not verified`: C-06 (DEC-1), C-10 (DEC-5;
+Tier 2 L12 before release), C-11 (DEC-6), C-13 (T-05), C-16 (no exception; Tier 2 L10 before release).
 
 ## Approved exceptions
 
 | Control | Exception | Compensating control | Approver | Date | Expires |
 |---|---|---|---|---|---|
+| C-05 | (b) Prohibited content can persist in the bank between provider consolidation and remediation, and until the next recall when verification is incomplete. **Pending Tier 1: L1, L2, L3** | Read-back and re-classification of every touched memory (T-25); recall-time re-classification and withholding (T-33); `written_unverified`; per-domain `remediations` alert (T-39) |  |  |  |
+| C-09 | **Contingent: only if L7 fails.** No enforced TTL on generated memories. **Pending Tier 1: L7** | Retention disclosure in the adopting domain's runbook, and a manual purge procedure (T-43) |  |  |  |
+| C-17 | No cross-instance idempotency or key-reuse detection in v0.1.0. **Pending Tier 1: L5** (if L5 fails, there is no exception: Stage 2) | Required `Idempotency-Key` and per-instance replay (T-30); bounded, budgeted retry (T-22); provider-side dedup (L5); Cloud Run session affinity (T-40) |  |  |  |
+| C-19 | The per-domain budget is enforced per instance; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together. Not Tier-1-dependent | Platform-owned per-domain quota alert and `quota_consumed{domain}` (T-39); one variable for `max_instances` and `MAX_INSTANCES`, with refusal to start without it (T-09, T-40) |  |  |  |
 
-None. No exception was given to this assessment.
+**Draft rows. None is approved.** The requester accepted these exceptions in principle on
+2026-10-21. Approver, Date and Expires are **deliberately empty**: only the security reviewer fills
+them, and the design-artifact validator rejects an approved assessment while any of the three is
+empty for a `Gap`. Each expiry must be a calendar date (for C-17 and C-19, tied to v0.2.0). Delete
+the C-09 row if L7 passes. Delete the C-17 row and return to Stage 2 if L5 fails.
 
 ## Approval
 
 Gate C. A security reviewer sets `status: approved`. CI fails an approved assessment that contains a
 `Gap` with no recorded exception.
 
-Decisions this gate needs, beyond the gaps table: **O6** (the `policy-provider` default relaxed to
-`passthrough`), **D3** (rollback-else-delete, in light of C-05 (a)), **Q5** (the persistence
-window), and whether Gate C can proceed before live verification L1–L10.
+**Re-confirmation (2026-10-22 recheck) needs:**
+
+1. T-24's Tier 1 record, or the reviewer's explicit decision to approve before it exists.
+2. Approver, date and calendar expiry on each exception row that applies, after Tier 1, with rows
+   that do not apply deleted.
+3. A decision on C-09's retention granularity. It changes "Retention (Q11)" in design.md, and may
+   need Gate B re-approval.
+4. Whether design.md's tiering amendment of 2026-10-22 needs Gate B re-approval.
+5. Still open from the first assessment: **O6** (the `policy-provider` default relaxed to
+   `passthrough`).
+
+D3 and Q5 are now decided (DEC-3; the C-05 (b) exception). Live verification is no longer a single
+precondition: Tier 1 precedes this gate, and Tier 2 precedes release (T-45).

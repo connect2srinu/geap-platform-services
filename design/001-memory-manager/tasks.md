@@ -24,6 +24,11 @@ decided, live checks L4 and L7 are extended, and L12 is added. `controls-check.m
 edited by this amendment. Exceptions and status changes are recorded there by a human at the
 Gate C re-confirmation (see "Approval").
 
+Amended on 2026-10-22 at the requester's instruction: live verification is split into **Tier 1**
+(L1–L9, L11) and **Tier 2** (L10, L12). Tier 1 is T-24, run with the spike probe
+`spike/probe_memory_bank.py` before the Gate C re-confirmation. Tier 2 is the new T-45, run before
+release. T-23 is rescoped to the pattern's own live suite. This matches design.md "Live verification".
+
 - **VERIFIED** — front matter read: `intent.md`, `design.md` and `controls-check.md` are all
   `status: approved` (Srinivasa reddy, 2026-10-21).
 - Read in full: the three approved artifacts; `patterns/memory-manager/pattern.yaml`,
@@ -51,13 +56,13 @@ it gives a recommendation, it is labelled **PROPOSED** for the Gate D approver.
 | DEC-2 | What happens when emitting an audit event fails? controls-check C-07 says this must be stated here | controls-check C-07 | T-12, T-32 | **DECIDED** — accepted by the requester, 2026-10-21; takes effect with Gate D approval: write synchronously to a dedicated log name through the Cloud Logging API, which surfaces failures, unlike stdout on Cloud Run. If a `memory_write` event fails, the outcome is downgraded to `written_unverified` and a CRITICAL fallback line goes to stdout, with no value. Adds the `google-cloud-logging` dependency and an `audit_emission_failures` metric | Platform lead + security reviewer |
 | DEC-3 | Rollback vs delete, given that a rolled-back prohibited revision may stay in revision history | controls-check C-05 (a), D3 | T-27 only. Delete (T-26) is unaffected | **DECIDED** — accepted by the requester, 2026-10-21: delete-only (T-26), unless L4 proves that a rollback leaves no listable or retrievable prohibited revision. T-27 is built only on that evidence. If L4 shows that delete does not purge the revision history either, that is a design problem: return to Stage 2, not an exception | Security reviewer + platform architect |
 | DEC-4 | No cross-instance idempotency or global rate limit: accept with an exception that expires at v0.2.0, or add a shared store (which returns to Stage 1) | design O1/O2; controls-check C-17, C-19 | **Gate E**, not any task. If a store is chosen, this plan is void | **DECIDED** — accepted by the requester, 2026-10-21: an exception for C-17 and C-19 with a calendar expiry tied to v0.2.0. A human records it in `controls-check.md`, and only after L5 passes. Compensating controls: T-22 (bounded, budgeted retry), T-30 (per-instance replay), L5 (provider-side dedup), Cloud Run session affinity (T-40), the platform quota alert and `quota_consumed{domain}` (T-39), and a per-instance budget derived from `max_instances` (T-09, T-22, T-40). Blocks Gate E, not any task | Platform architect |
-| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-23, T-24, T-40 | **DECIDED** — accepted by the requester, 2026-10-21: `INGRESS_TRAFFIC_INTERNAL_ONLY`, asserted by a Terraform check, plus live check **L12**. If L12 fails, public ingress goes under an exception. Its compensating controls: no `allUsers` or `allAuthenticatedUsers` invoker, with `run.invoker` held only by the registered agent service accounts; in-app token verification (C-01); and the per-caller rate limit (T-31) | Platform architect + security reviewer |
-| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | **DECIDED** — accepted by the requester, 2026-10-21: a custom role holding only the memory permissions the design uses (generate, get, retrieve, delete, and list revisions plus rollback only if T-27 is built). The exact permission names are confirmed live in T-24 | Platform architect + security reviewer |
+| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-23, T-40, T-45 | **DECIDED** — accepted by the requester, 2026-10-21: `INGRESS_TRAFFIC_INTERNAL_ONLY`, asserted by a Terraform check, plus live check **L12**. If L12 fails, public ingress goes under an exception. Its compensating controls: no `allUsers` or `allAuthenticatedUsers` invoker, with `run.invoker` held only by the registered agent service accounts; in-app token verification (C-01); and the per-caller rate limit (T-31) | Platform architect + security reviewer |
+| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | **DECIDED** — accepted by the requester, 2026-10-21: a custom role holding only the memory permissions the design uses (generate, get, retrieve, delete, and list revisions plus rollback only if T-27 is built). The exact permission names come from the IAM permission reference in T-39. The T-45 run under that role shows they are sufficient | Platform architect + security reviewer |
 | DEC-7 | **How the conformance suite authenticates against a locally built image.** The agent's token is Google-signed, and CI holds no Google identity. The design does not say how this works | Not in the design (gap found while planning) | T-28 (local mode only), T-37, T-38 | **DECIDED** — accepted by the requester, 2026-10-21, as reuse of the refusal mechanism the design already approved for the fake provider; **no return to Stage 2**. Condition: the refusal outside a local environment is asserted **in the conformance suite** (T-37), not only in unit tests, so an adopting domain cannot ship it enabled. Mechanism: a local-only trust anchor for agent tokens (configurable issuer + JWKS), guarded exactly like the fake provider: allowed only when `environment: local`, refused when `K_SERVICE` is set, with the refusal tested | Platform architect + security reviewer |
 | DEC-8 | Platform maximum for `retentionDays` | Q11 (Legal) | T-07 ships a placeholder; blocks release, not implementation | Schema carries 1095 as a placeholder, labelled OPEN in its description; `pattern-publish` must refuse it | Legal + platform lead |
 | DEC-9 | How the platform's extension defaults are packaged. A domain's `/app/extensions` would shadow a top-level `extensions` package, so the defaults ship as `pattern.extensions`. The boundary checker then needs to recognise that import path | Found while planning (Dockerfile + checker) | T-02, T-06 | Ship as `pattern.extensions` and update the checker in this feature (T-06), because otherwise this feature would silently disable a check | Platform lead |
 | DEC-10 | Fix the `Secret scanning` job's missing `pull-requests: read` permission in T-05, or in a separate change | controls-check C-08 | T-05 scope | Separate light-track change. It is unrelated to this feature (CLAUDE.md rule 11) | Platform lead |
-| DEC-11 | The `agentplatform` SDK package and version range | design `compatibility.memoryBankSdk` | T-21, T-41 | Pin the version the prior art uses, provisionally; confirm in T-24 | Platform architect |
+| DEC-11 | The `agentplatform` SDK package and version range | design `compatibility.memoryBankSdk` | T-21, T-41 | **PROPOSED**, and pinned provisionally for the Tier 1 probe: `google-cloud-aiplatform[agent_engines]==2.3.0`, which provides `agentplatform`. **VERIFIED**: the prior art's `apps/control-plane-api/uv.lock` locks 2.3.0, and its virtual environment's `agentplatform` comes from that distribution. Confirmed by T-24's run | Platform architect |
 
 ## Sequence
 
@@ -76,6 +81,7 @@ make validate-manifest check-boundary
 flowchart LR
     subgraph s0["0 · Prerequisites"]
         T01[T-01 ADRs]
+        T24[T-24 Tier 1 probe · human]
     end
     subgraph s1["1 · Toolchain + contract"]
         T02[T-02 package] --> T03[T-03 OpenAPI]
@@ -97,7 +103,8 @@ flowchart LR
     end
     subgraph s4["4 · Providers + live"]
         T20[T-20 port+fake] --> T21[T-21 adapter] & T22[T-22 governor]
-        T21 --> T23[T-23 live tests] --> T24[T-24 live run · human]
+        T21 --> T23[T-23 live tests]
+        T24 --> T23
     end
     subgraph s5["5 · Worker"]
         T25[T-25 write+verify] --> T26[T-26 delete] --> T27[T-27 rollback]
@@ -111,16 +118,20 @@ flowchart LR
         T39[T-39 NFR TF] & T40[T-40 runtime TF]
         T41[T-41 manifest] --> T42[T-42 README] & T43[T-43 runbook]
         T43 --> T44[T-44 consumer template]
+        T39 & T40 --> T45[T-45 Tier 2 · human]
     end
+    T23 --> T45
     s1 --> s2 --> s3 --> s5
     s4 --> s5 --> s6 --> s7
 ```
 
-**De-risking order — agreed by the requester, 2026-10-21.** The requester arranges platform credentials and the provisioned bank for T-24. Live checks L1 (no extraction, consolidation still
-runs), L5 (identical facts dedup) and L6 (the prefix survives consolidation) decide whether the
-design holds at all. If one fails, the design says to re-enter Stage 2, which invalidates T-19 and
-T-25 to T-27. Do T-20, T-21 and T-23 straight after Stage 1, and have T-24's L1, L5 and L6 run
-(by a human, in the platform project) **before** starting T-19 or T-25.
+**De-risking order — agreed by the requester 2026-10-21, amended 2026-10-22.** The requester
+arranges platform credentials and a bank provisioned for the spike. T-24 runs the Tier 1 probe,
+which needs no pattern code, **first**: before the Gate C re-confirmation, and so before Gate D. L1
+(no extraction, consolidation still runs), L5 (identical facts dedup) and L6 (the prefix survives
+consolidation) decide whether the design holds at all. If one fails, the design says to re-enter
+Stage 2, which invalidates T-19 and T-25 to T-27. Tier 2 (T-45: L10, L12) runs once T-39 and T-40
+are deployed, before release.
 
 **Parallel lanes once T-02 is done:** {T-03}, {T-04, T-05, T-06}, {T-07 → T-08, T-09},
 {T-10, T-11}, {T-13 → T-14}, {T-20 → T-21, T-22}, {T-39, T-40}. Within stage 3, T-15 to T-18 run in
@@ -446,33 +457,33 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | **Files owned** | `P/src/providers/governor.py`, `P/src/providers/retry.py`, `P/tests/test_governor.py`, `P/tests/test_retry.py` |
 | **Status** | `pending` |
 
-#### T-23 — Write the opt-in live contract tests for L1–L12
+#### T-23 — Write the pattern's opt-in live tests against the adapter (L1–L12)
 
 | | |
 |---|---|
-| **Objective** | One live test per assumption L1–L12, excluded from the default run, that records its observation |
+| **Objective** | The live suite the pattern keeps after release: the Tier 1 checks re-expressed through the adapter (T-21), so they catch SDK or provider drift, plus the Tier 2 checks L10 and L12 that T-45 runs |
 | **Components** | `P/tests/live/` |
-| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. L10 needs two domains' service accounts, so it is a separate, explicitly labelled test. **L11** (added 2026-10-21, from 006 / proposed C-20): does Memory Bank support a customer-managed key? The probe creates a bank, or reads an existing one's configuration, with a Cloud KMS key set. It **passes** only if the provider accepts the key and reports it as the bank's encryption key. A rejected field, an ignored field, or no such field all count as **no**. The answer is observed, never inferred from documentation. **L4, extended** (2026-10-21, C-05 (a), DEC-3): roll back a memory from a prohibited revision, then delete another, and after each, list and get its revisions. Record whether the prohibited revision is still listable or retrievable. Rollback **passes** only if it is not. Delete is recorded the same way, and a listable revision after delete is a Stage 2 problem. **L7, extended** (2026-10-21, C-09): set a TTL on a direct memory; let a consolidation update the same memory; record whether the TTL is **kept**, **reset** or **dropped**; then observe expiry. It **passes** only if the TTL is accepted, survives consolidation (kept or reset), and the memory is gone after it. **L12** (added 2026-10-21, C-10, DEC-5): an agent on Agent Runtime calls the Memory Manager service deployed with internal-only ingress (T-40), by the documented private path. It **passes** only if an authenticated request reaches the service and gets an application response. A connection failure, timeout or ingress denial counts as **no**. Like L10, it needs real deployed principals, so it is a separate, explicitly labelled test |
-| **Dependencies** | T-21 |
+| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. **Tier 1** (L1–L9, L11) asserts the outcomes T-24 recorded, through the adapter rather than the raw SDK. T-24's probe is the reference definition of each check, including L4 and L7 as extended on 2026-10-21. **Tier 2** checks are separate, explicitly labelled files. **L10** needs two domains' service accounts, each bound to its own bank by T-39. **L12** (DEC-5): an agent on Agent Runtime calls the service deployed from T-40 with internal-only ingress, by the documented private path. It **passes** only if an authenticated request reaches the service and gets an application response. A connection failure, timeout or ingress denial counts as **no** |
+| **Dependencies** | T-21; T-24 (recorded Tier 1 outcomes) |
 | **Acceptance criteria** | 9, 13, 14 (live halves) |
-| **Tests** | `tests/live/test_memory_bank_live.py` |
+| **Tests** | `tests/live/test_memory_bank_live.py` (Tier 1), `tests/live/test_isolation_live.py` (L10), `tests/live/test_ingress_reachability_live.py` (L12) |
 | **Validation** | `uv run --project P pytest P/tests -q` shows them **skipped**; a collection-only run lists twelve tests |
-| **Files owned** | `P/tests/live/__init__.py`, `P/tests/live/test_memory_bank_live.py`, `P/tests/live/test_ingress_reachability_live.py` |
+| **Files owned** | `P/tests/live/__init__.py`, `P/tests/live/test_memory_bank_live.py`, `P/tests/live/test_isolation_live.py`, `P/tests/live/test_ingress_reachability_live.py` |
 | **Status** | `pending` |
 
-#### T-24 — Run live verification and record the evidence (human-executed)
+#### T-24 — Run the Tier 1 probe and record the evidence (human-executed, before the Gate C re-confirmation)
 
 | | |
 |---|---|
-| **Objective** | Run T-23 against a real bank in the platform project and record each output. This settles L1–L12, and with them DEC-3, DEC-4, DEC-6 (permission names), DEC-11 and the AC13 bound *N* |
+| **Objective** | Run `spike/probe_memory_bank.py` against a real bank in the platform project and record each output. This settles L1–L9 and L11, and with them DEC-3, DEC-4 (through L5), DEC-11 (the SDK pin) and the AC13 bound *N* |
 | **Components** | Design folder |
-| **Expected changes** | `live-verification.md`: date, commit, SDK version, command, raw output and verdict per L-item. **Claude cannot run this**: it needs platform-project credentials, and a bank provisioned by platform Terraform, which this repository never applies. If L1, L5 or L6 fail, stop and re-enter Stage 2. If L11 is **no**, that is a disclosure every adopting domain needs (006 AC4), not a configuration option. Accepted Gap outcomes (2026-10-21): C-05 (b) always takes its exception. The design depends on consolidation (L1), so a result showing none sends the design back to Stage 2, not a closed gap. If **L7** fails, C-09 takes an exception, and T-43 carries the disclosure and purge procedure. If **L10** fails, check whether the bank supports a resource-level IAM policy. If it does not, return to Stage 2: C-16 is non-overridable, and separate service accounts alone are not isolation. If **L12** fails, C-10 takes the DEC-5 exception. If **L5** fails, there is no DEC-4 exception, and the design re-enters Stage 2 |
-| **Dependencies** | T-23; a provisioned bank (T-39 applied by the platform team); for L12, a runtime deployed from T-40 and an Agent Runtime agent (never applied from this repository) |
-| **Acceptance criteria** | 9, 13, 14 (live evidence) |
-| **Tests** | T-23's suite |
-| **Validation** | `make validate-design` (the file uses the evidence labels); human review |
-| **Files owned** | `design/001-memory-manager/live-verification.md` |
-| **Status** | `pending` |
+| **Expected changes** | The probe was written on 2026-10-22, before Gate D, at the requester's instruction. It is a design-stage spike, not pattern code, and needs only the standard library and the pinned SDK (`google-cloud-aiplatform[agent_engines]==2.3.0`). The run produces `live-verification.md`: date, commit, SDK version, command, the probe's raw output (`--json`) and a verdict per L-item. UNAVAILABLE is recorded as unavailable, never as a pass. **Claude cannot run this**: it needs the requester's platform credentials and a bank the platform team provisions for the spike; this repository applies no infrastructure. **Outcomes:** <br>• L1, L5 or L6 fail → stop and re-enter Stage 2. L5 failing also means there is no DEC-4 exception. <br>• L4 (c) fails → DEC-3 delete-only, and T-27 is dropped. L4 (d) fails → Stage 2. <br>• L7 fails → C-09 takes its exception, and T-43 carries the disclosure and purge procedure. <br>• C-05 (b) takes its exception whatever the result, because the design depends on consolidation (L1). <br>• L11 is **no** → a disclosure for every adopting domain (006 AC4), not a configuration option. <br>The bank-level TTL finding in design.md "Live verification" needs a design decision whatever L7 shows |
+| **Dependencies** | None in this plan: it needs no pattern code. Needs a bank provisioned for the spike in the platform project, and the requester's platform credentials |
+| **Acceptance criteria** | 9, 13 (live evidence) |
+| **Tests** | The probe |
+| **Validation** | `make validate-design` (the record uses the evidence labels); human review |
+| **Files owned** | `design/001-memory-manager/spike/probe_memory_bank.py`, `design/001-memory-manager/live-verification.md` |
+| **Status** | `pending` — probe written 2026-10-22, not run |
 
 ### Stage 5 — Write pipeline
 
@@ -683,7 +694,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | **Objective** | Reference module that provisions one domain's bank and binds the Memory Bank role to that domain's Memory Manager SA only, with an IAM Condition on the bank. Plus the audit sink filtered by the dedicated log name, and per-domain quota alerting |
 | **Components** | `P/infrastructure/terraform/memory-bank-nfr/` |
 | **Expected changes** | The custom role per DEC-6. Outputs the bank resource name for domain config. A per-domain alert on the `remediations` rate, as the C-05 (b) compensating control. No agent principal in any binding. No primitive roles. **Validated only — never applied** (CLAUDE.md rule 17) |
-| **Dependencies** | DEC-6 (decided; permission names from T-24); DEC-2 (sink filter) |
+| **Dependencies** | DEC-6 (decided); DEC-2 (sink filter) |
 | **Acceptance criteria** | 14, 16 |
 | **Tests** | Checkov; `make check-boundary` (primitive roles); a check that the custom role holds no permission outside the DEC-6 list |
 | **Validation** | `terraform -chdir=… init -backend=false && terraform -chdir=… validate`; `terraform fmt -check`; Checkov on the directory |
@@ -760,6 +771,20 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | **Files owned** | `templates/domain-consumer/docs/agent-api.md`, `templates/domain-consumer/scripts/smoke_test.py`, `templates/domain-consumer/docs/runbook.md` |
 | **Status** | `pending` |
 
+#### T-45 — Run Tier 2 live verification and record the evidence (human-executed, before release)
+
+| | |
+|---|---|
+| **Objective** | Run T-23's L10 and L12 tests against deployed pattern infrastructure, and record each output |
+| **Components** | Design folder |
+| **Expected changes** | The run produces `live-verification-tier2.md`: date, commit, command, raw output and a verdict for L10 and L12. **Claude cannot run this**: it needs T-39 applied for two domains, the runtime deployed from T-40, and an agent on Agent Runtime. None of these is applied from this repository. **Outcomes:** <br>• L10 fails → use a resource-level IAM policy on the bank if the provider has one; otherwise re-enter Stage 2. C-16 is non-overridable. <br>• L12 fails → C-10 takes the DEC-5 exception. <br>The run uses the DEC-6 custom role, so it also shows that role is sufficient. This is a **release-readiness item**: `pattern-publish` must find this file, with both verdicts, before v0.1.0 is published |
+| **Dependencies** | T-23; T-39 applied for two domains; T-40 deployed; an Agent Runtime agent |
+| **Acceptance criteria** | 14 (live evidence) |
+| **Tests** | T-23's L10 and L12 tests |
+| **Validation** | `make validate-design`; human review |
+| **Files owned** | `design/001-memory-manager/live-verification-tier2.md` |
+| **Status** | `pending` |
+
 ## Traceability
 
 ### Acceptance criteria
@@ -779,7 +804,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | 11 — consolidation rewrite remediated + audited | T-19, T-25, T-26, T-27 | `test_encoding.py`, `test_pipeline_verify.py`, `test_remediation_*.py` |
 | 12 — verification incomplete never `verified` | T-25, T-26, T-32 | `test_pipeline_verify.py`, `test_remediation_delete.py`, `test_remember.py` |
 | 13 — recall after write within *N* | T-33, T-37, T-24 | `test_recall.py`, conformance; live L9 |
-| 14 — no cross-domain access | T-21, T-32, T-39, T-40, T-24 | `test_memory_bank_adapter.py`, `test_remember.py`; Checkov; live L10 |
+| 14 — no cross-domain access | T-21, T-32, T-39, T-40, T-45 | `test_memory_bank_adapter.py`, `test_remember.py`; Checkov; live L10 |
 | 15 — no value/PII/secret in logs, traces, errors | T-10, T-11, T-29, T-35 | `test_logging.py`, `test_metrics.py`, `test_errors.py`, `test_no_leaks.py` |
 | 16 — audit on every write, rejection, deletion | T-12, T-25, T-26, T-32, T-36 | `test_audit.py`, `test_required_telemetry.py` |
 | 17 — new domain by YAML alone | T-08, T-17, T-41 | `test_config_examples.py`, `test_eligibility.py` (second config) |
@@ -801,13 +826,13 @@ Every verification method `controls-check.md` names has a task here. None of the
 | C-07 | Implemented, not verified | T-12, T-36, T-39. Failure semantics are DEC-2 |
 | C-08 | Implemented, not verified | T-41 (`spec.secrets`), T-05 scan. Gitleaks evidence blocked by DEC-10 |
 | C-09 | **Gap** | T-07 (bound), T-21 (TTL sent); live L7, extended to consolidation updates. Bound value is DEC-8. Exception only if L7 fails (T-43) |
-| C-10 | **Gap** | T-40 (internal-only, per DEC-5); live L12 (T-24). Exception only if L12 fails |
+| C-10 | **Gap** | T-40 (internal-only, per DEC-5); live L12 (T-45, Tier 2). Exception only if L12 fails |
 | C-11 | **Gap** | T-39 (custom role, per DEC-6), T-40, T-41, `make check-boundary` |
 | C-12 | Implemented, not verified | T-38 (build, UID ≠ 0, scan) |
 | C-13 | **Gap** | **T-05** (closes the gap) |
 | C-14 | Not applicable | — |
 | C-15 | Implemented, not verified | T-39, T-40. Checkov stays red on pre-existing `templates/terraform-gcp` until a separate fix (see below) |
-| C-16 | **Gap** | T-21, T-32, T-39; live L10 (T-24). No exception: if L10 fails and the bank has no resource-level policy, return to Stage 2 |
+| C-16 | **Gap** | T-21, T-32, T-39; live L10 (T-45, Tier 2). No exception: if L10 fails and the bank has no resource-level policy, return to Stage 2 |
 | C-17 | **Gap** | T-22, T-30, T-40 (session affinity); live L5. Cross-instance gap: exception per DEC-4, after L5 passes |
 | C-18 | Implemented, not verified | T-11, T-22, T-36, T-43 |
 | C-19 | **Gap** | T-09, T-22, T-39 (quota alert), T-40 (`max_instances` = `MAX_INSTANCES`). Per-instance gap: exception per DEC-4 |
@@ -852,4 +877,5 @@ amends `controls-check.md`, normally through a `design-check-controls --recheck`
 statuses for the controls this plan now closes (C-06, C-10, C-11, C-13, C-16, and C-05 (a)); and
 `## Approved exceptions` rows, each with an approver, a date, a calendar expiry and a compensating
 control, for C-05 (b), C-19 and C-17 (after L5). The design-artifact
-validator fails until every approved `Gap` has such a row.
+validator fails until every approved `Gap` has such a row. Tier 1 evidence (T-24) comes first,
+because the C-05 (b) and C-17 exceptions, and C-09's contingent one, depend on it.
