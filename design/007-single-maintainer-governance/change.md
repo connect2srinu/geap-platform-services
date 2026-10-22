@@ -83,9 +83,10 @@ The alternative is to apply protection only after both 003 and 005 have merged.
 | Check | Command | Result |
 |---|---|---|
 | No placeholders left | `grep -c '<org>' .github/CODEOWNERS` | **passed** — `0` |
-| CODEOWNERS parses on GitHub | `gh api 'repos/connect2srinu/geap-platform-services/codeowners/errors?ref=design/007-single-maintainer-governance'` | **not yet run** — needs the push |
-| Design artifacts | `make validate-design` | see the commit's run |
-| Protection applied as specified | `gh api …/branches/main/protection` | **not yet run** — applied separately |
+| CODEOWNERS parses on GitHub | `gh api 'repos/connect2srinu/geap-platform-services/codeowners/errors?ref=design/007-single-maintainer-governance'` | **passed** — `{"errors":[]}` (was 14 `Invalid owner`) |
+| Design artifacts | `python scripts/validate_design_artifacts.py design/007-single-maintainer-governance` | **passed** — `8 checks, 0 warning(s)` |
+| Protection applied as specified (step 1) | `gh api -X PUT …/branches/main/protection`, then a GET | **passed** — applied 2026-10-21 on the requester's instruction. Read back: 10 required checks (all except `Infrastructure policy scan`), `strict: true`, `enforce_admins: true`, 0 approvals, no code-owner review, conversation resolution on, force-push and deletion off |
+| Step 3: `Infrastructure policy scan` required | `gh api …/branches/main/protection` | **not yet run** — after 005 merges |
 
 ## Approval
 
