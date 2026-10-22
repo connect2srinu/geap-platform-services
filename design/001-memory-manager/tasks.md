@@ -39,13 +39,13 @@ it gives a recommendation, it is labelled **PROPOSED** for the Gate D approver.
 
 | ID | Decision | Source | Blocks | Recommendation | Owner |
 |---|---|---|---|---|---|
-| DEC-1 | Can the audit `scope identifier` hold the end user's subject? Options: raw, HMAC-pseudonymised, or omitted | controls-check C-06 | T-12 (and T-40/T-41 if HMAC adds a secret) | **PROPOSED**: HMAC-SHA256 with a key from Secret Manager. One secret, scoped `secretAccessor` | Security reviewer |
-| DEC-2 | What happens when emitting an audit event fails? controls-check C-07 says this must be stated here | controls-check C-07 | T-12, T-32 | **PROPOSED**: write synchronously to a dedicated log name through the Cloud Logging API, which surfaces failures, unlike stdout on Cloud Run. If a `memory_write` event fails, the outcome is downgraded to `written_unverified` and a CRITICAL fallback line goes to stdout, with no value. Adds the `google-cloud-logging` dependency and an `audit_emission_failures` metric | Platform lead + security reviewer |
-| DEC-3 | Rollback vs delete, given that a rolled-back prohibited revision may stay in revision history | controls-check C-05 (a), D3 | T-27 only. Delete (T-26) is unaffected | Wait for L4. If revisions cannot be purged, use delete-only and drop T-27 | Security reviewer + platform architect |
-| DEC-4 | No cross-instance idempotency or global rate limit: accept with an exception that expires at v0.2.0, or add a shared store (which returns to Stage 1) | design O1/O2; controls-check C-17, C-19 | **Gate E**, not any task. If a store is chosen, this plan is void | Exception, after L5 passes | Platform architect |
-| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-40 | Internal-only, plus a reachability check | Platform architect + security reviewer |
-| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | A custom role holding only the six memory permissions the design uses | Platform architect + security reviewer |
-| DEC-7 | **How the conformance suite authenticates against a locally built image.** The agent's token is Google-signed, and CI holds no Google identity. The design does not say how this works | Not in the design (gap found while planning) | T-28 (local mode only), T-37, T-38 | **PROPOSED**: a local-only trust anchor for agent tokens (configurable issuer + JWKS), guarded exactly like the fake provider: allowed only when `environment: local`, refused when `K_SERVICE` is set, with the refusal tested. **If the approver sees this as a design change, it returns to Stage 2.** | Platform architect + security reviewer |
+| DEC-1 | Can the audit `scope identifier` hold the end user's subject? Options: raw, HMAC-pseudonymised, or omitted | controls-check C-06 | T-12 (and T-40/T-41 if HMAC adds a secret) | **PROPOSED**: HMAC-SHA256 with a key from Secret Manager. One secret, scoped `secretAccessor`. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Security reviewer |
+| DEC-2 | What happens when emitting an audit event fails? controls-check C-07 says this must be stated here | controls-check C-07 | T-12, T-32 | **DECIDED** — accepted by the requester, 2026-10-21; takes effect with Gate D approval: write synchronously to a dedicated log name through the Cloud Logging API, which surfaces failures, unlike stdout on Cloud Run. If a `memory_write` event fails, the outcome is downgraded to `written_unverified` and a CRITICAL fallback line goes to stdout, with no value. Adds the `google-cloud-logging` dependency and an `audit_emission_failures` metric | Platform lead + security reviewer |
+| DEC-3 | Rollback vs delete, given that a rolled-back prohibited revision may stay in revision history | controls-check C-05 (a), D3 | T-27 only. Delete (T-26) is unaffected | Wait for L4. If revisions cannot be purged, use delete-only and drop T-27. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Security reviewer + platform architect |
+| DEC-4 | No cross-instance idempotency or global rate limit: accept with an exception that expires at v0.2.0, or add a shared store (which returns to Stage 1) | design O1/O2; controls-check C-17, C-19 | **Gate E**, not any task. If a store is chosen, this plan is void | Exception, after L5 passes. **Agreed** (requester, 2026-10-21): blocks Gate E, not any task | Platform architect |
+| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-40 | Internal-only, plus a reachability check. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Platform architect + security reviewer |
+| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | A custom role holding only the six memory permissions the design uses. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Platform architect + security reviewer |
+| DEC-7 | **How the conformance suite authenticates against a locally built image.** The agent's token is Google-signed, and CI holds no Google identity. The design does not say how this works | Not in the design (gap found while planning) | T-28 (local mode only), T-37, T-38 | **DECIDED** — accepted by the requester, 2026-10-21, as reuse of the refusal mechanism the design already approved for the fake provider; **no return to Stage 2**. Condition: the refusal outside a local environment is asserted **in the conformance suite** (T-37), not only in unit tests, so an adopting domain cannot ship it enabled. Mechanism: a local-only trust anchor for agent tokens (configurable issuer + JWKS), guarded exactly like the fake provider: allowed only when `environment: local`, refused when `K_SERVICE` is set, with the refusal tested | Platform architect + security reviewer |
 | DEC-8 | Platform maximum for `retentionDays` | Q11 (Legal) | T-07 ships a placeholder; blocks release, not implementation | Schema carries 1095 as a placeholder, labelled OPEN in its description; `pattern-publish` must refuse it | Legal + platform lead |
 | DEC-9 | How the platform's extension defaults are packaged. A domain's `/app/extensions` would shadow a top-level `extensions` package, so the defaults ship as `pattern.extensions`. The boundary checker then needs to recognise that import path | Found while planning (Dockerfile + checker) | T-02, T-06 | Ship as `pattern.extensions` and update the checker in this feature (T-06), because otherwise this feature would silently disable a check | Platform lead |
 | DEC-10 | Fix the `Secret scanning` job's missing `pull-requests: read` permission in T-05, or in a separate change | controls-check C-08 | T-05 scope | Separate light-track change. It is unrelated to this feature (CLAUDE.md rule 11) | Platform lead |
@@ -107,7 +107,7 @@ flowchart LR
     s4 --> s5 --> s6 --> s7
 ```
 
-**Recommended de-risking order (PROPOSED).** Live checks L1 (no extraction, consolidation still
+**De-risking order — agreed by the requester, 2026-10-21.** The requester arranges platform credentials and the provisioned bank for T-24. Live checks L1 (no extraction, consolidation still
 runs), L5 (identical facts dedup) and L6 (the prefix survives consolidation) decide whether the
 design holds at all. If one fails, the design says to re-enter Stage 2, which invalidates T-19 and
 T-25 to T-27. Do T-20, T-21 and T-23 straight after Stage 1, and have T-24's L1, L5 and L6 run
@@ -645,10 +645,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Black-box tests against `CONFORMANCE_BASE_URL` for everything a domain could break by customizing |
 | **Components** | `P/conformance/` |
-| **Expected changes** | Endpoints, shapes, every status and error code, idempotency replay, each fail-closed deny path, the default classifier denying, no body field selecting scope or bank, audit and no-leak checks through the local sink, recall-after-write polled every 1 s up to *N* = 10 s. A separately labelled live profile. Uses the DEC-7 local issuer. Imports nothing from `pattern` |
+| **Expected changes** | Endpoints, shapes, every status and error code, idempotency replay, each fail-closed deny path, the default classifier denying, no body field selecting scope or bank, audit and no-leak checks through the local sink, recall-after-write polled every 1 s up to *N* = 10 s. A separately labelled live profile. Uses the DEC-7 local issuer. **DEC-7 condition:** in the deployed profile, a token signed by the local test issuer is asserted `401`; and the built image started with `environment: local` and `K_SERVICE` set is asserted to refuse to start. Imports nothing from `pattern` |
 | **Dependencies** | T-34, **DEC-7** |
 | **Acceptance criteria** | 1, 2, 3, 4, 10, 13, 18 |
-| **Tests** | `conformance/test_*.py`, with `conformance/conftest.py` |
+| **Tests** | `conformance/test_*.py`, with `conformance/conftest.py`; includes `conformance/test_local_trust_refused.py` (DEC-7 condition) |
 | **Validation** | Run the app locally, then `python3 scripts/run_conformance.py --pattern memory-manager --base-url http://127.0.0.1:8080` |
 | **Files owned** | `P/conformance/conftest.py`, `P/conformance/test_*.py`, `P/conformance/README.md` |
 | **Status** | `pending` |
@@ -819,6 +819,6 @@ Recorded during implementation. A material architecture change means returning t
 
 ## Approval
 
-**Gate D.** Not approved. A platform lead sets `status: approved` with `approved_by` and
+**Gate D.** Not approved, and **held**: the requester will re-confirm or amend Gate C first, because the gap-without-exception validator defect (problem 1) meant Gate C passed with 9 undisclosed Gaps. A platform lead sets `status: approved` with `approved_by` and
 `approved_date`, after reviewing the task breakdown, the PROPOSED recommendations under DEC-1 to
 DEC-11 (DEC-7 in particular, which may send this back to Stage 2), and the de-risking order.
