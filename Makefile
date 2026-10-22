@@ -11,6 +11,7 @@ VENV := .venv
 # (enough to run `make deps` and to print an honest message from everything else).
 PYTHON := $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo python3)
 UV := $(shell command -v uv 2>/dev/null)
+PYTHON_VERSION := 3.12
 
 .PHONY: help deps verify validate-design validate-manifest check-boundary check-release lint test terraform-validate clean-venv
 
@@ -19,11 +20,24 @@ help:
 	@echo
 	@echo "  Using python: $(PYTHON)"
 
-deps: ## Create .venv and install validation + dev dependencies
+# Python 3.12 is the standard (standards/coding.md) and what CI runs. A venv on another version
+# gives local results that are not comparable to CI, so an older one is refused, not reused.
+deps: ## Create .venv (Python 3.12) and install validation + dev dependencies
+	@if [ -x $(VENV)/bin/python ] && ! $(VENV)/bin/python -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))'; then \
+		echo "error: $(VENV) uses Python $$($(VENV)/bin/python -c 'import platform; print(platform.python_version())'); it must be $(PYTHON_VERSION) or newer, as CI is."; \
+		echo "  Recreate it:  make clean-venv deps"; \
+		exit 1; \
+	fi
 	@if [ ! -x $(VENV)/bin/python ]; then \
 		if [ -n "$(UV)" ]; then \
-			echo "Creating $(VENV) with uv"; uv venv $(VENV); \
+			echo "Creating $(VENV) with uv, Python $(PYTHON_VERSION)"; \
+			uv venv --python $(PYTHON_VERSION) $(VENV) || exit 1; \
 		else \
+			python3 -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))' || { \
+				echo "error: python3 is $$(python3 -c 'import platform; print(platform.python_version())'); $(VENV) needs Python $(PYTHON_VERSION) or newer."; \
+				echo "  Either install uv (https://docs.astral.sh/uv/) and re-run 'make deps' -- uv fetches $(PYTHON_VERSION) itself;"; \
+				echo "  or install python$(PYTHON_VERSION) and run:  python$(PYTHON_VERSION) -m venv $(VENV) && make deps"; \
+				exit 1; }; \
 			echo "Creating $(VENV) with python3 -m venv"; \
 			python3 -m venv $(VENV) || { \
 				echo "error: python3 -m venv failed. On Debian/Ubuntu: sudo apt install python3-venv"; \

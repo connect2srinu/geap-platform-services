@@ -5,7 +5,7 @@ track: light
 status: draft
 ---
 
-# Change — Make local lint match CI, and treat empty Python suites as skipped
+# Change — Make local checks match CI, treat empty Python suites as skipped, and let gitleaks run
 
 > **Light track.** Use only when *every* statement below is true. If any becomes false during the
 > work, stop and escalate to the full track — this is one-way and automatic.
@@ -30,6 +30,15 @@ These are foundation defects from `69eee1b`. All are **VERIFIED** on PR #1's CI 
 4. **`make test` hides real failures.** Found while scoping item 3: `make test` ends in
    `|| echo "no tests collected yet"`, so a failing test exits 0. It also discards stderr. Included
    at the requester's instruction (2026-10-21).
+5. **The local venv was not on Python 3.12.** `make deps` ran `uv venv` without a version, and uv
+   picked a managed CPython 3.9.23. **VERIFIED**: `.venv/pyvenv.cfg` pointed at
+   `cpython-3.9.23`, while `standards/coding.md` and CI use 3.12. Local results weren't comparable
+   to CI's. Added at the requester's instruction (2026-10-21).
+6. **Secret scanning never scanned.** On PR #1 the gitleaks job fails with `403 Resource not
+   accessible by integration` on `GET /repos/.../pulls/1/commits`. **VERIFIED** in
+   `controls-check.md` C-08 (run 39695758417). gitleaks lists the PR's commits through the API,
+   and the workflow grants only `contents: read`. No secret was found; the scan never ran. Added at
+   the requester's instruction (2026-10-21).
 
 | | |
 |---|---|
@@ -48,6 +57,14 @@ These are foundation defects from `69eee1b`. All are **VERIFIED** on PR #1's CI 
 - **`Makefile` `test`:** pass only the test directories that exist, apply the same exit-5 handling,
   and stop discarding stderr. Real failures propagate (item 4).
 
+- **`Makefile` `deps`:** `uv venv --python 3.12`. The `python3 -m venv` fallback refuses when
+  `python3` is older than 3.12, and says how to fix it: install uv, or use `python3.12 -m venv`.
+  An existing `.venv` older than 3.12 is refused with `make clean-venv deps`, rather than silently
+  reused.
+- **`security.yml` `secrets` job:** job-level `permissions: contents: read, pull-requests: read`.
+  This is read-only, added to that one job only. The other jobs keep the workflow's
+  `contents: read`.
+
 **Not in scope** (reported, not fixed): `make terraform-validate` also ends in `|| true` on
 `terraform fmt -check`, and so masks formatting failures.
 
@@ -58,22 +75,32 @@ These are foundation defects from `69eee1b`. All are **VERIFIED** on PR #1's CI 
 
 | Control | Effect | Status |
 |---|---|---|
-| — | CI hygiene only. It changes no control in `standards/security.md` | Unchanged posture |
+| C-08 | The gitleaks job can now actually scan, giving C-08 the evidence it lacked. The control is unchanged. The added permission is read-only and job-scoped | Unchanged posture; evidence restored |
+| — | Everything else is CI hygiene. It changes no control in `standards/security.md` | Unchanged posture |
 
 ## Verification
 
+All on **Python 3.12.3**, in a `.venv` deleted and recreated by the new `make deps`. Results from
+the earlier 3.9.23 venv are superseded and are not counted.
+
 | Check | Command | Result |
 |---|---|---|
-| `make lint` catches what CI catches | `make lint`, before reformatting | **failed as intended** — `9 files would be reformatted`, exit 2 |
-| Formatting | `make lint`, after `ruff format` | **passed** — `All checks passed!`, `10 files already formatted` |
-| The reformat is formatting only | AST comparison against `HEAD` for each of the 9 files | **passed** — all 9 `AST identical` |
-| Scripts still behave | `validate_design_artifacts.py`, `validate_pattern_manifest.py`, `check_platform_domain_boundary.py`, `run_conformance.py --list` | **passed** (17, 25 and 4 checks); conformance reports **unavailable** (exit 3), as it did before |
-| No tests collected → skipped | `make test` with no tests | **passed** — `No tests collected yet — skipped, not passed.`, exit 0 |
+| An existing 3.9 venv is refused | `make deps` with the old `.venv` (3.9.23) | **passed** — `error: .venv uses Python 3.9.23; it must be 3.12 or newer`, exit 2 |
+| Fallback refuses old `python3` | `make deps UV=` with `python3` → 3.9.23 | **passed** — refusal with both remedies, exit 2, no `.venv` created |
+| Fallback works on 3.12 | `make deps UV=` with `python3` → 3.12.3 | **passed** — `Python 3.12.3`, ruff 0.8.4, pytest 8.3.4 |
+| uv path pins 3.12 | `make clean-venv deps` | **passed** — `Using CPython 3.12.3 interpreter at: /usr/bin/python3.12` |
+| `make lint` catches what CI catches | `ruff format --check` on the 9 files as at `69eee1b` | **failed as intended** — 9 files would be reformatted |
+| Formatting | `make lint` | **passed** — `All checks passed!`, `10 files already formatted` |
+| The reformat is formatting only | AST comparison `69eee1b` → `d4ada6a` | **passed** — 9 of 9 identical |
+| Scripts still behave | `make validate-design validate-manifest check-boundary`; `run_conformance.py --list` | **passed** (25, 25, 4 checks); conformance **unavailable** (exit 3), as before |
+| No tests collected → skipped | `make test` | **passed** — `No tests collected yet — skipped, not passed.`, exit 0 |
 | A failing test fails `make test` | a temporary failing test, not committed | **passed** — `1 failed`, exit 2 |
 | A passing test passes `make test` | a temporary passing test, not committed | **passed** — `1 passed`, exit 0 |
-| CI type-check guard | the job's loop, run locally on this tree | **passed** — `No pattern source present yet — skipped, not passed.` |
+| CI type-check guard | the job's loop, locally | **passed** — skipped, exit 0 |
+| CI test exit-5 handling | the job's step, locally, on an empty `tests/` | **passed** — skipped, exit 0 |
+| gitleaks scans | `Security / Secret scanning` on this PR | **not yet run** — needs the push |
 | CI jobs on GitHub | the PR's checks | **not yet run** — needs the push |
-| Workflow lint | `actionlint` | **unavailable** — not installed. The YAML parses |
+| Workflow lint | `actionlint` | **unavailable** — not installed. Both workflow files parse as YAML |
 
 **Merge order with 002:** both change `scripts/validate_design_artifacts.py`. If 002 merges first,
 rebase this branch and re-run `ruff format scripts`. The conflict is formatting only.
@@ -83,5 +110,7 @@ rebase this branch and re-run `ruff format scripts`. The conflict is formatting 
 **Gate A** — approved in session on 2026-10-21 by the requester (connect2srinu): "Approve 002 and
 003, include the make test fix". Restate this in the PR description, as the light track requires.
 `status` stays `draft` here: only a human sets `approved`.
+
+**Additions** (items 5 and 6) — instructed by the requester on 2026-10-21, before the push.
 
 Gate A inline (in the PR description) and Gate E (human review). Gate F for merge.
