@@ -1,7 +1,9 @@
 ---
 artifact: design
 feature: 001-memory-manager
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-22
 ---
 
 # Memory Manager v0.1.0 — design
@@ -135,5 +137,9 @@ idempotency store, which v0.1.0 has no room for.
 
 ## Approval
 
-A human sets `status: approved`. **Pending**: the SDK pager question, and confirmation that the three
-accepted risks are acceptable.
+Approved by Srinivasa reddy, 2026-10-22, instructed in session.
+
+**One item remains OPEN and is not resolved by this approval:** whether any
+`google-cloud-aiplatform` 2.x release pages `memories.retrieve` correctly. It affects `recall`
+paging only. Implementation may proceed on everything else; the paging task is blocked until it is
+answered, and platform code must not call a private SDK method to work around it.
