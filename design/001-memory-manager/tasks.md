@@ -3,7 +3,7 @@ artifact: tasks
 feature: 001-memory-manager
 track: full
 status: draft
-related_adrs: [ADR-0001, ADR-0002, ADR-0003]
+related_adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004]
 patterns_touched: [memory-manager]
 ---
 
@@ -59,7 +59,7 @@ it gives a recommendation, it is labelled **PROPOSED** for the Gate D approver.
 | DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-23, T-40, T-45 | **DECIDED** — accepted by the requester, 2026-10-21: `INGRESS_TRAFFIC_INTERNAL_ONLY`, asserted by a Terraform check, plus live check **L12**. If L12 fails, public ingress goes under an exception. Its compensating controls: no `allUsers` or `allAuthenticatedUsers` invoker, with `run.invoker` held only by the registered agent service accounts; in-app token verification (C-01); and the per-caller rate limit (T-31) | Platform architect + security reviewer |
 | DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | **DECIDED** — accepted by the requester, 2026-10-21: a custom role holding only the memory permissions the design uses (generate, get, retrieve, delete, and list revisions plus rollback only if T-27 is built). The exact permission names come from the IAM permission reference in T-39. The T-45 run under that role shows they are sufficient | Platform architect + security reviewer |
 | DEC-7 | **How the conformance suite authenticates against a locally built image.** The agent's token is Google-signed, and CI holds no Google identity. The design does not say how this works | Not in the design (gap found while planning) | T-28 (local mode only), T-37, T-38 | **DECIDED** — accepted by the requester, 2026-10-21, as reuse of the refusal mechanism the design already approved for the fake provider; **no return to Stage 2**. Condition: the refusal outside a local environment is asserted **in the conformance suite** (T-37), not only in unit tests, so an adopting domain cannot ship it enabled. Mechanism: a local-only trust anchor for agent tokens (configurable issuer + JWKS), guarded exactly like the fake provider: allowed only when `environment: local`, refused when `K_SERVICE` is set, with the refusal tested | Platform architect + security reviewer |
-| DEC-8 | Platform maximum for `retentionDays` | Q11 (Legal) | T-07 ships a placeholder; blocks release, not implementation | Schema carries 1095 as a placeholder, labelled OPEN in its description; `pattern-publish` must refuse it | Legal + platform lead |
+| DEC-8 | Platform maximum for the domain-level `retentionDays` (ADR-0004) | Q11 (Legal) | T-07 ships a placeholder; blocks release, not implementation | Schema carries 1095 as a placeholder, labelled OPEN in its description; `pattern-publish` must refuse it | Legal + platform lead |
 | DEC-9 | How the platform's extension defaults are packaged. A domain's `/app/extensions` would shadow a top-level `extensions` package, so the defaults ship as `pattern.extensions`. The boundary checker then needs to recognise that import path | Found while planning (Dockerfile + checker) | T-02, T-06 | Ship as `pattern.extensions` and update the checker in this feature (T-06), because otherwise this feature would silently disable a check | Platform lead |
 | DEC-10 | Fix the `Secret scanning` job's missing `pull-requests: read` permission in T-05, or in a separate change | controls-check C-08 | T-05 scope | Separate light-track change. It is unrelated to this feature (CLAUDE.md rule 11) | Platform lead |
 | DEC-11 | The `agentplatform` SDK package and version range | design `compatibility.memoryBankSdk` | T-21, T-41 | **PROPOSED**, and pinned provisionally for the Tier 1 probe: `google-cloud-aiplatform[agent_engines]==2.3.0`, which provides `agentplatform`. **VERIFIED**: the prior art's `apps/control-plane-api/uv.lock` locks 2.3.0, and its virtual environment's `agentplatform` comes from that distribution. Confirmed by T-24's run | Platform architect |
@@ -145,14 +145,14 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 
 | | |
 |---|---|
-| **Objective** | Write ADR-0004 to ADR-0007 with `design-record-decision`, so the code has a recorded decision to point at |
+| **Objective** | Write ADR-0005 to ADR-0008 with `design-record-decision`, so the code has a recorded decision to point at (renumbered 2026-10-22: ADR-0004 records the retention decision) |
 | **Components** | `docs/decisions/` |
-| **Expected changes** | Add four ADRs: ADR-0004 (GenerateMemories + verification + remediation), ADR-0005 (forwarded end-user token), ADR-0006 (synchronous v0.1.0), ADR-0007 (`topic-provider`). Index them in the README. Each one records the decisions that are still OPEN (Q4, DEC-3, DEC-4) as open, not as decided |
+| **Expected changes** | Add four ADRs: ADR-0005 (GenerateMemories + verification + remediation), ADR-0006 (forwarded end-user token), ADR-0007 (synchronous v0.1.0), ADR-0008 (`topic-provider`). Index them in the README. Each one records the decisions that are still OPEN (Q4, DEC-3, DEC-4) as open, not as decided |
 | **Dependencies** | None |
 | **Acceptance criteria** | — (decision record) |
 | **Tests** | None. This task is documentation and is checked by the validator only |
 | **Validation** | `make validate-design`; human review |
-| **Files owned** | `docs/decisions/ADR-0004-*.md` … `ADR-0007-*.md`, `docs/decisions/README.md` |
+| **Files owned** | `docs/decisions/ADR-0005-*.md` … `ADR-0008-*.md`, `docs/decisions/README.md` |
 | **Status** | `pending` |
 
 ### Stage 1 — Toolchain and contract
@@ -235,10 +235,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Implement the design's "Configuration changes" table, plus the three schema requirements from controls-check |
 | **Components** | `P/config/config.schema.json` |
-| **Expected changes** | Add `topics` (version + definitions), `rbac.roles[].topics[]`, `callers[]`, `endUserIdentity` (**required**), `limits` (with schema maxima), and `environment` ∈ `local` \| `deployed`. Narrow `permissions` to `read`/`write`. Remove `privacy`. Restrict `extensions` keys to the four declared IDs. Bound `retentionDays` by a placeholder maximum (DEC-8). Every key gets a description. No key exists that makes `sensitive`/`restricted` eligible, skips verification, or selects a bank |
+| **Expected changes** | Add `topics` (version + definitions), `rbac.roles[].topics[]`, `callers[]`, `endUserIdentity` (**required**), `limits` (with schema maxima), and `environment` ∈ `local` \| `deployed`. Narrow `permissions` to `read`/`write`. Remove `privacy`. Restrict `extensions` keys to the four declared IDs. Add one **domain-level** `retentionDays`, bounded by a placeholder maximum (DEC-8); topics carry no retention (ADR-0004). Every key gets a description. No key exists that makes `sensitive`/`restricted` eligible, skips verification, or selects a bank |
 | **Dependencies** | T-02 |
 | **Acceptance criteria** | 4, 14, 17 |
-| **Tests** | `tests/test_config_schema.py`: missing `endUserIdentity` is rejected; an undeclared `extensions` key is rejected; an unknown permission is rejected; `retentionDays` above the maximum is rejected; a role referencing an undefined topic is rejected (if JSON Schema can't express this, T-09 carries it); there is no key named `eligible`, `skip*` or `bank` |
+| **Tests** | `tests/test_config_schema.py`: missing `endUserIdentity` is rejected; an undeclared `extensions` key is rejected; an unknown permission is rejected; the domain-level `retentionDays` above the maximum is rejected; a per-topic `retentionDays` is rejected (ADR-0004); a role referencing an undefined topic is rejected (if JSON Schema can't express this, T-09 carries it); there is no key named `eligible`, `skip*` or `bank` |
 | **Validation** | `uv run --project P pytest P/tests/test_config_schema.py -q`; `make validate-manifest` |
 | **Files owned** | `P/config/config.schema.json`, `P/tests/test_config_schema.py` |
 | **Status** | `pending` |
@@ -421,7 +421,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | A `MemoryBankPort` protocol covering only what the design uses, and a fake that records calls, can inject failures, and can rewrite memories on consolidation |
 | **Components** | `src/providers/port.py`, `src/providers/fake.py` |
-| **Expected changes** | Operations: `generate(direct facts, ttl)` → affected memories with their action; `get`; `list_revisions`; `rollback`; `delete`; `retrieve(scope, page)`. Provider behaviour that matters is kept visible, not abstracted away: the LRO, eventual visibility and revisions. The fake refuses to construct unless the loaded config is `environment: local`, and the T-09 guard applies |
+| **Expected changes** | Operations: `generate(direct facts)` → affected memories with their action; `get`; `list_revisions`; `rollback`; `delete`; `retrieve(scope, page)`. Provider behaviour that matters is kept visible, not abstracted away: the LRO, eventual visibility and revisions. The fake refuses to construct unless the loaded config is `environment: local`, and the T-09 guard applies |
 | **Dependencies** | T-09 |
 | **Acceptance criteria** | 10, 11, 12, 18 |
 | **Tests** | `tests/test_fake_provider.py`: rewrite-on-consolidation; 429/5xx injection; delayed visibility; construction refused outside local |
@@ -435,10 +435,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Implement the port over the `agentplatform` SDK, so that no extraction source is ever sent |
 | **Components** | `src/providers/memory_bank.py` |
-| **Expected changes** | The bank name comes from configuration only. Workload Identity (no credentials secret). Provider errors are mapped to typed exceptions, and raw text is never propagated. Per-memory TTL is set on write (L7 dependent) |
+| **Expected changes** | The bank name comes from configuration only. Workload Identity (no credentials secret). Provider errors are mapped to typed exceptions, and raw text is never propagated. **No TTL is sent on write**: retention is the bank's TTL (ADR-0004) |
 | **Dependencies** | T-20, DEC-11 |
 | **Acceptance criteria** | 9, 14 |
-| **Tests** | `tests/test_memory_bank_adapter.py`, against a fake SDK client: the call shape uses `direct_memories_source` and **no** extraction source; TTL sent; bank name from config; raw error text never surfaced. **Says only that the adapter calls the fake SDK correctly** |
+| **Tests** | `tests/test_memory_bank_adapter.py`, against a fake SDK client: the call shape uses `direct_memories_source` and **no** extraction source; no TTL in the request; bank name from config; raw error text never surfaced. **Says only that the adapter calls the fake SDK correctly** |
 | **Validation** | `uv run --project P pytest P/tests/test_memory_bank_adapter.py -q`; standard checks |
 | **Files owned** | `P/src/providers/memory_bank.py`, `P/tests/test_memory_bank_adapter.py` |
 | **Status** | `pending` |
@@ -693,7 +693,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Reference module that provisions one domain's bank and binds the Memory Bank role to that domain's Memory Manager SA only, with an IAM Condition on the bank. Plus the audit sink filtered by the dedicated log name, and per-domain quota alerting |
 | **Components** | `P/infrastructure/terraform/memory-bank-nfr/` |
-| **Expected changes** | The custom role per DEC-6. Outputs the bank resource name for domain config. A per-domain alert on the `remediations` rate, as the C-05 (b) compensating control. No agent principal in any binding. No primitive roles. **Validated only — never applied** (CLAUDE.md rule 17) |
+| **Expected changes** | The custom role per DEC-6. The bank's `ttl_config.granular_ttl_config` sets `generate_created_ttl` and `generate_updated_ttl` from the domain's declared retention (ADR-0004); how revisions are retained waits on the Stage 2 decision. Outputs the bank resource name for domain config. A per-domain alert on the `remediations` rate, as the C-05 (b) compensating control. No agent principal in any binding. No primitive roles. **Validated only — never applied** (CLAUDE.md rule 17) |
 | **Dependencies** | DEC-6 (decided); DEC-2 (sink filter) |
 | **Acceptance criteria** | 14, 16 |
 | **Tests** | Checkov; `make check-boundary` (primitive roles); a check that the custom role holds no permission outside the DEC-6 list |
@@ -825,7 +825,7 @@ Every verification method `controls-check.md` names has a task here. None of the
 | C-06 | **Gap** | T-09, T-10, T-11, T-12 (HMAC, per DEC-1), T-29, T-35 |
 | C-07 | Implemented, not verified | T-12, T-36, T-39. Failure semantics are DEC-2 |
 | C-08 | Implemented, not verified | T-41 (`spec.secrets`), T-05 scan. Gitleaks evidence blocked by DEC-10 |
-| C-09 | **Gap** | T-07 (bound), T-21 (TTL sent); live L7, extended to consolidation updates. Bound value is DEC-8. Exception only if L7 fails (T-43) |
+| C-09 | **Gap** | T-07 (domain-level value and bound), T-39 (bank TTL), per ADR-0004; live L7, extended to consolidation updates. Bound value is DEC-8. If L7 fails, ADR-0004 is reopened |
 | C-10 | **Gap** | T-40 (internal-only, per DEC-5); live L12 (T-45, Tier 2). Exception only if L12 fails |
 | C-11 | **Gap** | T-39 (custom role, per DEC-6), T-40, T-41, `make check-boundary` |
 | C-12 | Implemented, not verified | T-38 (build, UID ≠ 0, scan) |
@@ -882,6 +882,8 @@ because the C-05 (b) and C-17 exceptions, and C-09's contingent one, depend on i
 
 **Stage 2 re-entry (2026-10-22).** The requester returned the design to Stage 2 for the retention
 defect (design.md "Approval"), with `disable_memory_revisions` vs rollback and O6 as further inputs.
-Gate D stays held until that pass ends and Gate C is re-confirmed. The tasks most likely to change
+Retention is decided (ADR-0004, 2026-10-22) and reflected in T-07, T-20, T-21, T-39 and C-09 above;
+it rests on L7. The pass stays open for `disable_memory_revisions` vs rollback, which waits on L4 and
+L7, and for O6. Gate D stays held until that pass ends and Gate C is re-confirmed. The tasks most likely to change
 are T-07 (schema), T-21 (TTL on write), T-26/T-27 (remediation), T-39 (bank TTL) and T-43
 (disclosure).

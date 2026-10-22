@@ -5,6 +5,7 @@ track: full
 status: approved
 approved_by: Srinivasa reddy
 approved_date: 2026-10-21
+related_adrs: [ADR-0003, ADR-0004]
 ---
 
 # Design — Memory Manager v0.1.0: a governed write path for agent memory
@@ -297,11 +298,25 @@ remains as a cross-check.
 
 ### Retention (Q11)
 
-Each topic may declare `retentionDays`, bounded by a platform maximum held in the schema, not in
-domain configuration. Enforcement uses the provider's per-memory expiry, set on write.
-**ASSUMPTION**: `GenerateMemories` accepts a TTL for direct memories. The bound values remain
-**OPEN** pending Legal; the prior art's 1095 / 730 days are placeholders (**VERIFIED**,
-`memory-bank-assumption-validation.md`). If no TTL is available, C-09 is a declared Gap at Gate C.
+**Amended 2026-10-22 in the Stage 2 pass — decided by the requester, recorded as [ADR-0004](../../docs/decisions/ADR-0004-retention-per-domain-bank-ttl.md).** The
+approved text promised per-topic `retentionDays` enforced by a per-memory expiry set on write. The
+provider cannot do that through `GenerateMemories` (see "Live verification", finding 1).
+
+- **One retention period per domain.** The domain declares a single domain-level value (name
+  PROPOSED: `retentionDays`), bounded by a platform maximum held in the schema, not in domain
+  configuration. **Topics carry no retention.**
+- **The bank enforces it.** Platform Terraform (T-39) sets the domain bank's `generate_created_ttl`
+  and `generate_updated_ttl` from that value. The write path sends no TTL. Retention therefore runs
+  from a memory's last write, creation or consolidation update.
+- **Per-topic retention is deferred to v0.2.0**, where application-side expiry becomes possible once
+  the worker exists. ADR-0003 stands.
+- **Dependency — this rests on L7.** It assumes the bank-level TTL expires generated memories and
+  survives consolidation. If L7 fails, this design has nothing to enforce retention with, and the
+  retention decision is **reopened**. It is not replaced by an exception.
+- **Still OPEN:** the bounds (Legal; the prior art's 1095 / 730 days are placeholders, **VERIFIED**,
+  `memory-bank-assumption-validation.md`); whether "retention from last write" meets Legal's
+  definition; whether the service checks at startup that the bank's TTL matches the declared value;
+  and how revisions are retained, which is decided with `disable_memory_revisions` vs rollback.
 
 ### Idempotency
 
@@ -331,7 +346,8 @@ None of these are breaking: no version has been released, and the schema validat
 
 | Change | Reason |
 |---|---|
-| **Add** `topics`: `version` (string, required), `definitions[]` with `id`, `classification` ∈ manifest vocabulary (`public` `internal` `sensitive` `restricted`), `extraction` ∈ `allowed` `blocked`, `enabled`, `allowInferred` (default `false`), `retentionDays`, `fields{name: {type, maxLength/enum}}` | Scope 4, 5, 10 |
+| **Add** `topics`: `version` (string, required), `definitions[]` with `id`, `classification` ∈ manifest vocabulary (`public` `internal` `sensitive` `restricted`), `extraction` ∈ `allowed` `blocked`, `enabled`, `allowInferred` (default `false`), `fields{name: {type, maxLength/enum}}`. No per-topic retention ([ADR-0004](../../docs/decisions/ADR-0004-retention-per-domain-bank-ttl.md)) | Scope 4, 5, 10 |
+| **Add** a domain-level `retentionDays` (name PROPOSED), bounded by a platform maximum in the schema | Q11, C-09. One period per domain, enforced by the bank's TTL ([ADR-0004](../../docs/decisions/ADR-0004-retention-per-domain-bank-ttl.md)). Amended 2026-10-22 |
 | **Add** `rbac.roles[].topics[]` | Per-agent approval (Scope 4, AC4 "not approved") |
 | **Add** `callers[]`: `id`, `principal` (service account identity), `role` | Exactly-one registered caller (C-01) |
 | **Add** `endUserIdentity`: `issuer`, `jwksUri`, `audiences[]`, `subjectClaim` (default `sub`) | D2 |
@@ -594,7 +610,9 @@ the prior art's `control-plane-api/uv.lock` pins) in the prior art's virtual env
    returned to Stage 2 (requester, 2026-10-22):** "Retention (Q11)" and the configuration schema
    promise per-topic `retentionDays`, set on write. With this SDK, `GenerateMemories` can't carry a
    per-topic TTL. With one bank per domain (ADR-0003), one retention period per domain is all the
-   provider supports. No L7 result resolves this. See "Approval".
+   provider supports. No L7 result resolves this. **Decided 2026-10-22:** one retention period per
+   domain, enforced by the bank's TTL, with per-topic retention deferred to v0.2.0 ([ADR-0004](../../docs/decisions/ADR-0004-retention-per-domain-bank-ttl.md); see
+   "Retention (Q11)"). That decision rests on L7.
 2. **`GenerateMemoriesConfig` also exposes `disable_memory_revisions`, `revision_ttl` and
    `disable_consolidation`.** The first two bear on C-05 (a), because a prohibited revision might
    never be retained. The probe records `disable_memory_revisions` as an observation under L4. The
@@ -627,14 +645,15 @@ the prior art's `control-plane-api/uv.lock` pins) in the prior art's virtual env
 
 ## Proposed ADRs
 
-Numbers are tentative. `design-record-decision` writes them only after Gate B approval.
+Numbers are tentative. `design-record-decision` writes them only after Gate B approval. Renumbered
+2026-10-22: ADR-0004 was taken by the retention decision, so these are now ADR-0005 to ADR-0008.
 
 | ID | Decision |
 |---|---|
-| ADR-0004 | Memory writes use `GenerateMemories` with `direct_memories_source`, followed by post-write verification and rollback-else-delete remediation, with recall-time re-classification as the backstop (Q4, Q5, Q6, D3, D6) |
-| ADR-0005 | End-user identity comes from a forwarded, service-verified end-user token. The scope is derived only from it, through an `entity-resolver` that fails closed (Q2, D2) |
-| ADR-0006 | v0.1.0 writes are synchronous: no queue, per-instance limiters, provider `429` → `503`. Records the idempotency and rate-limit limits and their v0.2.0 exit (Q8, D1, O1, O2) |
-| ADR-0007 | Topic eligibility is driven by a new `topic-provider` extension point over versioned YAML. `sensitive` and `restricted` are never eligible, and the `privacy` block is replaced (Scope 4, 10) |
+| ADR-0005 | Memory writes use `GenerateMemories` with `direct_memories_source`, followed by post-write verification and rollback-else-delete remediation, with recall-time re-classification as the backstop (Q4, Q5, Q6, D3, D6) |
+| ADR-0006 | End-user identity comes from a forwarded, service-verified end-user token. The scope is derived only from it, through an `entity-resolver` that fails closed (Q2, D2) |
+| ADR-0007 | v0.1.0 writes are synchronous: no queue, per-instance limiters, provider `429` → `503`. Records the idempotency and rate-limit limits and their v0.2.0 exit (Q8, D1, O1, O2) |
+| ADR-0008 | Topic eligibility is driven by a new `topic-provider` extension point over versioned YAML. `sensitive` and `restricted` are never eligible, and the `privacy` block is replaced (Scope 4, 10) |
 
 ## Approval
 
@@ -650,10 +669,13 @@ verification"). This is the approver's decision.
 verification", finding 1) means the design contradicts the provider. A Stage 2 pass resolves it, and
 design.md is re-approved at the end of that pass. Inputs to the pass:
 
-1. **Retention granularity.** Per-topic `retentionDays` cannot be enforced through `GenerateMemories`
-   with one bank per domain. **OPEN**, for the requester.
+1. **Retention granularity.** **Decided 2026-10-22** ([ADR-0004](../../docs/decisions/ADR-0004-retention-per-domain-bank-ttl.md)): one period per domain, enforced by
+   the bank's TTL; per-topic retention deferred to v0.2.0. It rests on L7: if L7 fails, it is
+   reopened.
 2. **`disable_memory_revisions` vs rollback** (finding 2): closing C-05 (a) outright, against keeping
    D3's rollback. **OPEN**.
 3. **O6**: the `policy-provider` default relaxed to `passthrough`. Carried in from Gate C.
 
-Tier 1 live evidence (tasks.md T-24) is gathered alongside; L4 and L7 inform items 1 and 2.
+Tier 1 live evidence (tasks.md T-24) is gathered alongside. L7 confirms or reopens item 1. Item 2
+waits on L4 and L7, and is decided together with how revisions are retained, because a revision is a
+copy that retention must cover. **The Stage 2 pass is not closed.**

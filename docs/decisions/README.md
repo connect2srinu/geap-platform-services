@@ -10,6 +10,7 @@ Written with [`design-record-decision`](../../.claude/skills/design-record-decis
 | [0001](ADR-0001-published-pattern-model.md) | Published pattern model, not a central control plane | Accepted | 2026-10-20 |
 | [0002](ADR-0002-reference-implementation-stack.md) | Python 3.12 + FastAPI for reference implementations | Accepted | 2026-10-20 |
 | [0003](ADR-0003-shared-platform-gcp-project.md) | Single platform-owned GCP project with per-domain memory banks | Accepted | 2026-10-20 |
+| [0004](ADR-0004-retention-per-domain-bank-ttl.md) | Memory retention is one period per domain, enforced by the bank's TTL | Accepted | 2026-10-22 |
 
 ## When to write one
 
