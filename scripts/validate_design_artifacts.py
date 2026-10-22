@@ -30,6 +30,7 @@ EVIDENCE_LABELS = {"VERIFIED", "PROPOSED", "OPEN", "ASSUMPTION"}
 AI_APPROVERS = re.compile(
     r"\b(claude|gpt|copilot|codex|gemini|ai agent|assistant)\b", re.I
 )
+APPROVAL_FIELDS = ("approved_by", "approved_date")
 CONTROL_STATUSES = {
     "Verified",
     "Implemented, not verified",
@@ -88,7 +89,9 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
         report.ok()
 
         try:
-            jsonschema.validate(fm, schema)
+            # Without a format checker jsonschema treats `format` as an annotation, so
+            # `approved_date: 10/21/2026` passed `format: date`.
+            jsonschema.validate(fm, schema, format_checker=jsonschema.FormatChecker())
             report.ok()
         except jsonschema.ValidationError as exc:
             loc = "/".join(str(p) for p in exc.absolute_path) or "(root)"
@@ -112,6 +115,20 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
             report.ok()
 
         statuses[name] = fm.get("status", "draft")
+
+        # Light track: Gate A is recorded in the PR description and Gate E as a GitHub review
+        # (.claude/rules/sdlc-gates.md). change.md's status is not a gate record, so an approval
+        # here would be a second record that can disagree with the first.
+        if name == "change.md":
+            if fm.get("status") == "approved" or any(k in fm for k in APPROVAL_FIELDS):
+                report.error(
+                    artifact_rel,
+                    "change.md records no gate approval: on the light track Gate A is in the PR "
+                    "description and Gate E is a GitHub review (.claude/rules/sdlc-gates.md); "
+                    "do not set status 'approved', approved_by or approved_date here",
+                )
+            else:
+                report.ok()
 
         approver = str(fm.get("approved_by", ""))
         if approver and AI_APPROVERS.search(approver):
