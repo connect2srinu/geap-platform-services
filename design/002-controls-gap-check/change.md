@@ -64,13 +64,16 @@ fixed, not a regression.
 
 ## Verification
 
+All on **Python 3.12.3** (`.venv` recreated by change 003's `make deps`). Results from the earlier
+3.9.23 venv are superseded and are not counted.
+
 | Check | Command | Result |
 |---|---|---|
 | Unit tests | `pytest -q tests/test_validate_controls_check.py` | **passed** — `13 passed` |
 | Tests fail without the fix | the old string-presence rule restored temporarily | **failed as intended** — `7 failed, 6 passed`; fix restored |
 | Lint on changed files | `ruff check scripts/validate_design_artifacts.py tests` | **passed** — `All checks passed!` |
-| Validator on `main`'s design folders | `python3 scripts/validate_design_artifacts.py` | **passed** — `17 checks` |
-| Validator on 001's committed artifacts (copy at `e1b0f68`) | same, against the copy | **failed as intended** — 9 errors: C-05, C-06, C-09, C-10, C-11, C-13, C-16, C-17, C-19 |
+| Validator on this branch's design folders | `python3 scripts/validate_design_artifacts.py` | **passed** — `25 checks` |
+| Validator on 001's committed artifacts (copy at `e1b0f68`) | same, against the copy | **failed as intended** — `29/38 checks passed, 9 error(s)`: C-05, C-06, C-09, C-10, C-11, C-13, C-16, C-17, C-19 |
 | `ruff format --check` on the script | — | **skipped** — the script was never formatted (that is change 003). New lines follow the file's existing style |
 
 ## Approval
