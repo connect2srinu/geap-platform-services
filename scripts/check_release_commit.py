@@ -34,14 +34,19 @@ ALLOWED = [
 ]
 
 # Paths that are frozen by the preceding feature work.
-FROZEN = re.compile(r"^patterns/[^/]+/(src|contracts|tests|conformance|extensions|config)/")
+FROZEN = re.compile(
+    r"^patterns/[^/]+/(src|contracts|tests|conformance|extensions|config)/"
+)
 
 
 def changed_files(base: str) -> list[str]:
     try:
         out = subprocess.run(
             ["git", "diff", "--name-only", f"{base}...HEAD"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except subprocess.CalledProcessError as exc:
         sys.exit(f"error: git diff failed: {exc.stderr.strip()}")
@@ -59,7 +64,10 @@ def is_release_change(files: list[str], base: str | None) -> bool:
         try:
             diff = subprocess.run(
                 ["git", "diff", f"{base}...HEAD", "--", manifest],
-                cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=True,
             ).stdout
         except subprocess.CalledProcessError:
             return True
@@ -71,7 +79,9 @@ def is_release_change(files: list[str], base: str | None) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="Base ref to diff against, e.g. origin/main")
-    parser.add_argument("--files", nargs="*", help="Explicit file list instead of a git diff")
+    parser.add_argument(
+        "--files", nargs="*", help="Explicit file list instead of a git diff"
+    )
     args = parser.parse_args()
 
     if args.files is not None:
@@ -107,7 +117,10 @@ def main() -> int:
         elif any(p.match(f) for p in ALLOWED):
             report.ok()
         else:
-            report.warn(f, "not a recognised release-track path; confirm it belongs in a release")
+            report.warn(
+                f,
+                "not a recognised release-track path; confirm it belongs in a release",
+            )
 
     return report.finish()
 

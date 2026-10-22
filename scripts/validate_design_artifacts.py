@@ -27,7 +27,9 @@ yaml, jsonschema = require_deps()
 SCHEMA_PATH = REPO_ROOT / "schemas" / "design-artifacts.schema.json"
 FULL_TRACK = ["intent.md", "design.md", "controls-check.md", "tasks.md"]
 EVIDENCE_LABELS = {"VERIFIED", "PROPOSED", "OPEN", "ASSUMPTION"}
-AI_APPROVERS = re.compile(r"\b(claude|gpt|copilot|codex|gemini|ai agent|assistant)\b", re.I)
+AI_APPROVERS = re.compile(
+    r"\b(claude|gpt|copilot|codex|gemini|ai agent|assistant)\b", re.I
+)
 CONTROL_STATUSES = {
     "Verified",
     "Implemented, not verified",
@@ -44,7 +46,9 @@ def folder_track(folder: Path) -> str:
 def validate_folder(folder: Path, schema: dict, report: Report) -> None:
     rel = folder.relative_to(REPO_ROOT)
     if not re.fullmatch(r"[0-9]{3}-[a-z][a-z0-9-]*", folder.name):
-        report.error(str(rel), "folder name must match NNN-slug (lowercase, kebab-case)")
+        report.error(
+            str(rel), "folder name must match NNN-slug (lowercase, kebab-case)"
+        )
         return
     report.ok()
 
@@ -69,8 +73,13 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
         artifact_rel = f"{rel}/{name}"
         fm, body = parse_front_matter(path, yaml)
 
-        if name not in expected and name not in FULL_TRACK + ["change.md", "closeout.md"]:
-            report.warn(artifact_rel, "not a recognised artifact name; it will not be validated")
+        if name not in expected and name not in FULL_TRACK + [
+            "change.md",
+            "closeout.md",
+        ]:
+            report.warn(
+                artifact_rel, "not a recognised artifact name; it will not be validated"
+            )
             continue
 
         if fm is None:
@@ -146,10 +155,19 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
     if controls.is_file():
         text = controls.read_text(encoding="utf-8")
         fm, _ = parse_front_matter(controls, yaml)
-        declared = set(re.findall(r"\|\s*(Verified|Implemented, not verified|Gap|Not applicable|Exception approved)\s*\|", text))
-        unknown = set(re.findall(r"\*\*Status:\*\*\s*([A-Za-z, ]+)", text)) - CONTROL_STATUSES
+        declared = set(
+            re.findall(
+                r"\|\s*(Verified|Implemented, not verified|Gap|Not applicable|Exception approved)\s*\|",
+                text,
+            )
+        )
+        unknown = (
+            set(re.findall(r"\*\*Status:\*\*\s*([A-Za-z, ]+)", text)) - CONTROL_STATUSES
+        )
         for u in sorted(unknown):
-            report.error(f"{rel}/controls-check.md", f"unrecognised control status '{u.strip()}'")
+            report.error(
+                f"{rel}/controls-check.md", f"unrecognised control status '{u.strip()}'"
+            )
         if not unknown:
             report.ok()
         if "Gap" in declared and (fm or {}).get("status") == "approved":
@@ -175,9 +193,13 @@ def main(argv: list[str]) -> int:
         folders = [Path(a).resolve() for a in argv]
     else:
         design = REPO_ROOT / "design"
-        folders = sorted(
-            p for p in design.iterdir() if p.is_dir() and not p.name.startswith("_")
-        ) if design.is_dir() else []
+        folders = (
+            sorted(
+                p for p in design.iterdir() if p.is_dir() and not p.name.startswith("_")
+            )
+            if design.is_dir()
+            else []
+        )
 
     report = Report("Design artifact validation")
     if not folders:
