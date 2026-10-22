@@ -50,6 +50,7 @@ scripts/          validators — plain Python, no Claude Code needed
 ## Getting started
 
 - **Developers:** [docs/onboarding/developer-guide.md](docs/onboarding/developer-guide.md)
+- **See the whole flow end to end:** [docs/onboarding/demo.md](docs/onboarding/demo.md)
 - **Adopting a pattern:** [docs/onboarding/domain-adoption.md](docs/onboarding/domain-adoption.md)
 - **Working here with Claude Code:** [CLAUDE.md](CLAUDE.md)
 

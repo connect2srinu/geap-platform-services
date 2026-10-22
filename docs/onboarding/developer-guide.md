@@ -18,6 +18,8 @@ is not a pass** — treat it as a blind spot.
 
 ## The process
 
+For a guided walkthrough you can run in front of people, see [demo.md](demo.md).
+
 Two documents, two gates. [CLAUDE.md](../../CLAUDE.md) has the rules; this is the mechanics.
 
 ```bash
