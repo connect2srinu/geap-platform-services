@@ -18,6 +18,12 @@ Produced on 2026-10-21 on branch `design/001-memory-manager` at `54bfa9f`.
 
 T-44 added on 2026-10-21 at the requester's instruction (consumer-template drift found in 005).
 
+Amended on 2026-10-21 after the requester accepted the recommendation for each of the nine Gaps
+(C-05, C-06, C-09, C-10, C-11, C-13, C-16, C-17, C-19): DEC-1, DEC-3, DEC-4, DEC-5 and DEC-6 are
+decided, live checks L4 and L7 are extended, and L12 is added. `controls-check.md` is **not**
+edited by this amendment. Exceptions and status changes are recorded there by a human at the
+Gate C re-confirmation (see "Approval").
+
 - **VERIFIED** — front matter read: `intent.md`, `design.md` and `controls-check.md` are all
   `status: approved` (Srinivasa reddy, 2026-10-21).
 - Read in full: the three approved artifacts; `patterns/memory-manager/pattern.yaml`,
@@ -41,12 +47,12 @@ it gives a recommendation, it is labelled **PROPOSED** for the Gate D approver.
 
 | ID | Decision | Source | Blocks | Recommendation | Owner |
 |---|---|---|---|---|---|
-| DEC-1 | Can the audit `scope identifier` hold the end user's subject? Options: raw, HMAC-pseudonymised, or omitted | controls-check C-06 | T-12 (and T-40/T-41 if HMAC adds a secret) | **PROPOSED**: HMAC-SHA256 with a key from Secret Manager. One secret, scoped `secretAccessor`. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Security reviewer |
+| DEC-1 | Can the audit `scope identifier` hold the end user's subject? Options: raw, HMAC-pseudonymised, or omitted | controls-check C-06 | T-09, T-12, T-40, T-41 | **DECIDED** — accepted by the requester, 2026-10-21; takes effect with Gate D: HMAC-SHA256 of the scope identifier. The key is one Secret Manager secret, exposed to the container as a Cloud Run Secret Manager reference, so no new SDK dependency. `secretAccessor` is bound on that secret only. A deployed instance without the key refuses to start. The raw subject is excluded, because it would breach C-06 | Security reviewer |
 | DEC-2 | What happens when emitting an audit event fails? controls-check C-07 says this must be stated here | controls-check C-07 | T-12, T-32 | **DECIDED** — accepted by the requester, 2026-10-21; takes effect with Gate D approval: write synchronously to a dedicated log name through the Cloud Logging API, which surfaces failures, unlike stdout on Cloud Run. If a `memory_write` event fails, the outcome is downgraded to `written_unverified` and a CRITICAL fallback line goes to stdout, with no value. Adds the `google-cloud-logging` dependency and an `audit_emission_failures` metric | Platform lead + security reviewer |
-| DEC-3 | Rollback vs delete, given that a rolled-back prohibited revision may stay in revision history | controls-check C-05 (a), D3 | T-27 only. Delete (T-26) is unaffected | Wait for L4. If revisions cannot be purged, use delete-only and drop T-27. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Security reviewer + platform architect |
-| DEC-4 | No cross-instance idempotency or global rate limit: accept with an exception that expires at v0.2.0, or add a shared store (which returns to Stage 1) | design O1/O2; controls-check C-17, C-19 | **Gate E**, not any task. If a store is chosen, this plan is void | Exception, after L5 passes. **Agreed** (requester, 2026-10-21): blocks Gate E, not any task | Platform architect |
-| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-40 | Internal-only, plus a reachability check. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Platform architect + security reviewer |
-| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | A custom role holding only the six memory permissions the design uses. **Deferred** to the Gate C re-confirmation (requester, 2026-10-21) | Platform architect + security reviewer |
+| DEC-3 | Rollback vs delete, given that a rolled-back prohibited revision may stay in revision history | controls-check C-05 (a), D3 | T-27 only. Delete (T-26) is unaffected | **DECIDED** — accepted by the requester, 2026-10-21: delete-only (T-26), unless L4 proves that a rollback leaves no listable or retrievable prohibited revision. T-27 is built only on that evidence. If L4 shows that delete does not purge the revision history either, that is a design problem: return to Stage 2, not an exception | Security reviewer + platform architect |
+| DEC-4 | No cross-instance idempotency or global rate limit: accept with an exception that expires at v0.2.0, or add a shared store (which returns to Stage 1) | design O1/O2; controls-check C-17, C-19 | **Gate E**, not any task. If a store is chosen, this plan is void | **DECIDED** — accepted by the requester, 2026-10-21: an exception for C-17 and C-19 with a calendar expiry tied to v0.2.0. A human records it in `controls-check.md`, and only after L5 passes. Compensating controls: T-22 (bounded, budgeted retry), T-30 (per-instance replay), L5 (provider-side dedup), Cloud Run session affinity (T-40), the platform quota alert and `quota_consumed{domain}` (T-39), and a per-instance budget derived from `max_instances` (T-09, T-22, T-40). Blocks Gate E, not any task | Platform architect |
+| DEC-5 | Cloud Run ingress, and whether Agent Runtime can reach an internal-only service | controls-check C-10 | T-23, T-24, T-40 | **DECIDED** — accepted by the requester, 2026-10-21: `INGRESS_TRAFFIC_INTERNAL_ONLY`, asserted by a Terraform check, plus live check **L12**. If L12 fails, public ingress goes under an exception. Its compensating controls: no `allUsers` or `allAuthenticatedUsers` invoker, with `run.invoker` held only by the registered agent service accounts; in-app token verification (C-01); and the per-caller rate limit (T-31) | Platform architect + security reviewer |
+| DEC-6 | The exact Memory Bank IAM role for the Memory Manager service account | design O3; controls-check C-11 | T-39 | **DECIDED** — accepted by the requester, 2026-10-21: a custom role holding only the memory permissions the design uses (generate, get, retrieve, delete, and list revisions plus rollback only if T-27 is built). The exact permission names are confirmed live in T-24 | Platform architect + security reviewer |
 | DEC-7 | **How the conformance suite authenticates against a locally built image.** The agent's token is Google-signed, and CI holds no Google identity. The design does not say how this works | Not in the design (gap found while planning) | T-28 (local mode only), T-37, T-38 | **DECIDED** — accepted by the requester, 2026-10-21, as reuse of the refusal mechanism the design already approved for the fake provider; **no return to Stage 2**. Condition: the refusal outside a local environment is asserted **in the conformance suite** (T-37), not only in unit tests, so an adopting domain cannot ship it enabled. Mechanism: a local-only trust anchor for agent tokens (configurable issuer + JWKS), guarded exactly like the fake provider: allowed only when `environment: local`, refused when `K_SERVICE` is set, with the refusal tested | Platform architect + security reviewer |
 | DEC-8 | Platform maximum for `retentionDays` | Q11 (Legal) | T-07 ships a placeholder; blocks release, not implementation | Schema carries 1095 as a placeholder, labelled OPEN in its description; `pattern-publish` must refuse it | Legal + platform lead |
 | DEC-9 | How the platform's extension defaults are packaged. A domain's `/app/extensions` would shadow a top-level `extensions` package, so the defaults ship as `pattern.extensions`. The boundary checker then needs to recognise that import path | Found while planning (Dockerfile + checker) | T-02, T-06 | Ship as `pattern.extensions` and update the checker in this feature (T-06), because otherwise this feature would silently disable a check | Platform lead |
@@ -246,10 +252,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Make an invalid configuration, or `environment: local` on Cloud Run, stop the process from starting |
 | **Components** | `src/config/` |
-| **Expected changes** | Precedence: defaults → file → environment → secret references. Typed Pydantic models of the validated configuration. Cross-reference checks the schema can't express: one principal maps to exactly one caller, and role topics exist. Refuses to start when `environment: local` and `K_SERVICE` is set |
+| **Expected changes** | Precedence: defaults → file → environment → secret references. Typed Pydantic models of the validated configuration. Cross-reference checks the schema can't express: one principal maps to exactly one caller, and role topics exist. Refuses to start when `environment: local` and `K_SERVICE` is set. When deployed, it also refuses to start without the DEC-1 HMAC key, without `MAX_INSTANCES` (C-19, set by T-40), or when the domain budget is below `MAX_INSTANCES` |
 | **Dependencies** | T-07 |
 | **Acceptance criteria** | 1 (exactly-one caller), 8 (unconfigured), 18 (guard) |
-| **Tests** | `tests/test_config_loader.py`: invalid config → refuse; principal mapped twice → refuse; `local` + `K_SERVICE` → refuse (C-01); precedence order |
+| **Tests** | `tests/test_config_loader.py`: invalid config → refuse; principal mapped twice → refuse; `local` + `K_SERVICE` → refuse (C-01); deployed without the HMAC key → refuse (C-06); deployed without `MAX_INSTANCES`, or budget < `MAX_INSTANCES` → refuse (C-19); precedence order |
 | **Validation** | `uv run --project P pytest P/tests/test_config_loader.py -q`; standard checks |
 | **Files owned** | `P/src/config/__init__.py`, `P/src/config/models.py`, `P/src/config/loader.py`, `P/tests/test_config_loader.py` |
 | **Status** | `pending` |
@@ -288,10 +294,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | One typed emitter for every audit event in the design, carrying no value |
 | **Components** | `src/observability/audit.py` |
-| **Expected changes** | Pydantic event models (correlation ID, caller, domain, operation, memory name, scope identifier per DEC-1, decision, reason, timestamp). A sink adapter per DEC-2, with its failure semantics surfaced to the caller as a typed result. A local in-memory sink for tests |
-| **Dependencies** | T-10, **DEC-1, DEC-2** |
+| **Expected changes** | Pydantic event models (correlation ID, caller, domain, operation, memory name, scope identifier as HMAC-SHA256 under the T-09 key per DEC-1 and never the raw subject, decision, reason, timestamp). A sink adapter per DEC-2, with its failure semantics surfaced to the caller as a typed result. A local in-memory sink for tests |
+| **Dependencies** | T-09, T-10, DEC-1, DEC-2 (both decided) |
 | **Acceptance criteria** | 16 |
-| **Tests** | `tests/test_audit.py`: every event type serialises with correlation ID and reason code; no sentinel; emission failure follows DEC-2 |
+| **Tests** | `tests/test_audit.py`: every event type serialises with correlation ID and reason code; no sentinel; a sentinel subject never appears in any event, and the same subject yields the same pseudonym under one key; emission failure follows DEC-2 |
 | **Validation** | `uv run --project P pytest P/tests/test_audit.py -q`; standard checks |
 | **Files owned** | `P/src/observability/audit.py`, `P/tests/test_audit.py` |
 | **Status** | `pending` |
@@ -432,36 +438,36 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | A per-domain token bucket that every provider request and every retry draws from, and retry with full jitter inside the deadlines |
 | **Components** | `src/providers/governor.py`, `src/providers/retry.py` |
-| **Expected changes** | Write: ≤ 2 retries within 10 s. Read-back: 3 attempts, 250 ms → 1 s, within 5 s. Honours provider `Retry-After`. Empty bucket → `DOMAIN_BUDGET_EXHAUSTED`. Metrics: `retry_attempts`, `provider_requests`, `provider_throttled`, `quota_consumed{domain}`, `quota_budget_exhausted` |
-| **Dependencies** | T-20, T-11 |
+| **Expected changes** | Write: ≤ 2 retries within 10 s. Read-back: 3 attempts, 250 ms → 1 s, within 5 s. Honours provider `Retry-After`. Empty bucket → `DOMAIN_BUDGET_EXHAUSTED`. The per-instance bucket is the domain budget ÷ `MAX_INSTANCES` from T-09, rounded down (C-19). Metrics: `retry_attempts`, `provider_requests`, `provider_throttled`, `quota_consumed{domain}`, `quota_budget_exhausted` |
+| **Dependencies** | T-20, T-11, T-09 |
 | **Acceptance criteria** | — (C-17, C-19) |
-| **Tests** | `tests/test_governor.py`, `tests/test_retry.py`: injected 429 → bounded attempts then a typed failure, and the fake sees no more calls; each retry consumes a token; over budget → no provider call; `Retry-After` honoured |
+| **Tests** | `tests/test_governor.py`, `tests/test_retry.py`: injected 429 → bounded attempts then a typed failure, and the fake sees no more calls; each retry consumes a token; over budget → no provider call; `Retry-After` honoured; the bucket size is budget ÷ `MAX_INSTANCES` |
 | **Validation** | `uv run --project P pytest P/tests/test_governor.py P/tests/test_retry.py -q`; standard checks |
 | **Files owned** | `P/src/providers/governor.py`, `P/src/providers/retry.py`, `P/tests/test_governor.py`, `P/tests/test_retry.py` |
 | **Status** | `pending` |
 
-#### T-23 — Write the opt-in live contract tests for L1–L11
+#### T-23 — Write the opt-in live contract tests for L1–L12
 
 | | |
 |---|---|
-| **Objective** | One live test per assumption L1–L11, excluded from the default run, that records its observation |
+| **Objective** | One live test per assumption L1–L12, excluded from the default run, that records its observation |
 | **Components** | `P/tests/live/` |
-| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. L10 needs two domains' service accounts, so it is a separate, explicitly labelled test. **L11** (added 2026-10-21, from 006 / proposed C-20): does Memory Bank support a customer-managed key? The probe creates a bank, or reads an existing one's configuration, with a Cloud KMS key set. It **passes** only if the provider accepts the key and reports it as the bank's encryption key. A rejected field, an ignored field, or no such field all count as **no**. The answer is observed, never inferred from documentation |
+| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. L10 needs two domains' service accounts, so it is a separate, explicitly labelled test. **L11** (added 2026-10-21, from 006 / proposed C-20): does Memory Bank support a customer-managed key? The probe creates a bank, or reads an existing one's configuration, with a Cloud KMS key set. It **passes** only if the provider accepts the key and reports it as the bank's encryption key. A rejected field, an ignored field, or no such field all count as **no**. The answer is observed, never inferred from documentation. **L4, extended** (2026-10-21, C-05 (a), DEC-3): roll back a memory from a prohibited revision, then delete another, and after each, list and get its revisions. Record whether the prohibited revision is still listable or retrievable. Rollback **passes** only if it is not. Delete is recorded the same way, and a listable revision after delete is a Stage 2 problem. **L7, extended** (2026-10-21, C-09): set a TTL on a direct memory; let a consolidation update the same memory; record whether the TTL is **kept**, **reset** or **dropped**; then observe expiry. It **passes** only if the TTL is accepted, survives consolidation (kept or reset), and the memory is gone after it. **L12** (added 2026-10-21, C-10, DEC-5): an agent on Agent Runtime calls the Memory Manager service deployed with internal-only ingress (T-40), by the documented private path. It **passes** only if an authenticated request reaches the service and gets an application response. A connection failure, timeout or ingress denial counts as **no**. Like L10, it needs real deployed principals, so it is a separate, explicitly labelled test |
 | **Dependencies** | T-21 |
 | **Acceptance criteria** | 9, 13, 14 (live halves) |
 | **Tests** | `tests/live/test_memory_bank_live.py` |
-| **Validation** | `uv run --project P pytest P/tests -q` shows them **skipped**; a collection-only run lists eleven tests |
-| **Files owned** | `P/tests/live/__init__.py`, `P/tests/live/test_memory_bank_live.py` |
+| **Validation** | `uv run --project P pytest P/tests -q` shows them **skipped**; a collection-only run lists twelve tests |
+| **Files owned** | `P/tests/live/__init__.py`, `P/tests/live/test_memory_bank_live.py`, `P/tests/live/test_ingress_reachability_live.py` |
 | **Status** | `pending` |
 
 #### T-24 — Run live verification and record the evidence (human-executed)
 
 | | |
 |---|---|
-| **Objective** | Run T-23 against a real bank in the platform project and record each output. This settles L1–L11, and with them DEC-3, DEC-4, DEC-11 and the AC13 bound *N* |
+| **Objective** | Run T-23 against a real bank in the platform project and record each output. This settles L1–L12, and with them DEC-3, DEC-4, DEC-6 (permission names), DEC-11 and the AC13 bound *N* |
 | **Components** | Design folder |
-| **Expected changes** | `live-verification.md`: date, commit, SDK version, command, raw output and verdict per L-item. **Claude cannot run this**: it needs platform-project credentials, and a bank provisioned by platform Terraform, which this repository never applies. If L1, L5 or L6 fail, stop and re-enter Stage 2. If L11 is **no**, that is a disclosure every adopting domain needs (006 AC4), not a configuration option |
-| **Dependencies** | T-23; a provisioned bank (T-39 applied by the platform team) |
+| **Expected changes** | `live-verification.md`: date, commit, SDK version, command, raw output and verdict per L-item. **Claude cannot run this**: it needs platform-project credentials, and a bank provisioned by platform Terraform, which this repository never applies. If L1, L5 or L6 fail, stop and re-enter Stage 2. If L11 is **no**, that is a disclosure every adopting domain needs (006 AC4), not a configuration option. Accepted Gap outcomes (2026-10-21): C-05 (b) always takes its exception. The design depends on consolidation (L1), so a result showing none sends the design back to Stage 2, not a closed gap. If **L7** fails, C-09 takes an exception, and T-43 carries the disclosure and purge procedure. If **L10** fails, check whether the bank supports a resource-level IAM policy. If it does not, return to Stage 2: C-16 is non-overridable, and separate service accounts alone are not isolation. If **L12** fails, C-10 takes the DEC-5 exception. If **L5** fails, there is no DEC-4 exception, and the design re-enters Stage 2 |
+| **Dependencies** | T-23; a provisioned bank (T-39 applied by the platform team); for L12, a runtime deployed from T-40 and an Agent Runtime agent (never applied from this repository) |
 | **Acceptance criteria** | 9, 13, 14 (live evidence) |
 | **Tests** | T-23's suite |
 | **Validation** | `make validate-design` (the file uses the evidence labels); human review |
@@ -490,7 +496,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Delete a memory that consolidation made prohibited or unparseable, and audit it |
 | **Components** | `src/worker/remediation.py` |
-| **Expected changes** | `remediate(name)` → `deleted` \| `failed`. Audit `memory_deletion` / `remediation_failed`; metric `remediations{action}`. A failure downgrades the outcome to `written_unverified`. Shaped so T-27 adds the rollback branch without changing callers |
+| **Expected changes** | Delete is the default remediation (DEC-3, decided). `remediate(name)` → `deleted` \| `failed`. Audit `memory_deletion` / `remediation_failed`; metric `remediations{action}`. A failure downgrades the outcome to `written_unverified`. Shaped so T-27 adds the rollback branch without changing callers |
 | **Dependencies** | T-25 |
 | **Acceptance criteria** | 11 |
 | **Tests** | `tests/test_remediation_delete.py`: rewrite → delete + audit; delete fails → `remediation_failed` + `written_unverified` |
@@ -504,8 +510,8 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Before deleting, list revisions. If the prior revision parses and classifies `allowed`, roll back to it instead |
 | **Components** | `src/worker/rollback.py`, called from T-26's branch point |
-| **Expected changes** | Audit `memory_rollback`. Falls back to delete when no clean revision exists. **Dropped entirely** if DEC-3 chooses delete-only |
-| **Dependencies** | T-26, **DEC-3** (after L4) |
+| **Expected changes** | Audit `memory_rollback`. Falls back to delete when no clean revision exists. Built **only** if L4 shows that a rollback leaves no listable or retrievable prohibited revision (DEC-3, decided). Otherwise it is dropped, and rollback and list-revisions come out of the DEC-6 role |
+| **Dependencies** | T-26, DEC-3 (decided), L4 evidence from T-24 |
 | **Acceptance criteria** | 11 |
 | **Tests** | `tests/test_remediation_rollback.py`: clean prior revision → rollback; prior revision prohibited → delete; listing revisions fails → delete |
 | **Validation** | `uv run --project P pytest P/tests/test_remediation_rollback.py -q`; standard checks |
@@ -676,10 +682,10 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Reference module that provisions one domain's bank and binds the Memory Bank role to that domain's Memory Manager SA only, with an IAM Condition on the bank. Plus the audit sink filtered by the dedicated log name, and per-domain quota alerting |
 | **Components** | `P/infrastructure/terraform/memory-bank-nfr/` |
-| **Expected changes** | The role per DEC-6. Outputs the bank resource name for domain config. No agent principal in any binding. No primitive roles. **Validated only — never applied** (CLAUDE.md rule 17) |
-| **Dependencies** | **DEC-6**; DEC-2 (sink filter) |
+| **Expected changes** | The custom role per DEC-6. Outputs the bank resource name for domain config. A per-domain alert on the `remediations` rate, as the C-05 (b) compensating control. No agent principal in any binding. No primitive roles. **Validated only — never applied** (CLAUDE.md rule 17) |
+| **Dependencies** | DEC-6 (decided; permission names from T-24); DEC-2 (sink filter) |
 | **Acceptance criteria** | 14, 16 |
-| **Tests** | Checkov; `make check-boundary` (primitive roles) |
+| **Tests** | Checkov; `make check-boundary` (primitive roles); a check that the custom role holds no permission outside the DEC-6 list |
 | **Validation** | `terraform -chdir=… init -backend=false && terraform -chdir=… validate`; `terraform fmt -check`; Checkov on the directory |
 | **Files owned** | `P/infrastructure/terraform/memory-bank-nfr/*.tf`, `P/infrastructure/terraform/memory-bank-nfr/README.md` |
 | **Status** | `pending` |
@@ -688,12 +694,12 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 
 | | |
 |---|---|
-| **Objective** | Reference Cloud Run service, its own service account and its roles, with ingress per DEC-5, and `max_instances` with the budget divided by it (C-19) |
+| **Objective** | Reference Cloud Run service, its own service account and its roles, with `INGRESS_TRAFFIC_INTERNAL_ONLY` (DEC-5), and `max_instances` with the budget divided by it (C-19) |
 | **Components** | `P/infrastructure/terraform/domain-runtime/` |
-| **Expected changes** | Request timeout above the 30 s deadline. Takes the bank name from T-39's outputs and does not create the bank. No Pub/Sub, no worker (D1). The secret binding only if DEC-1 chooses HMAC. Validated only |
-| **Dependencies** | **DEC-5**; T-39 (outputs) |
+| **Expected changes** | Request timeout above the 30 s deadline. Takes the bank name from T-39's outputs and does not create the bank. No Pub/Sub, no worker (D1). `roles/secretmanager.secretAccessor` on the DEC-1 HMAC secret only (a resource binding, not project-wide), exposed as a Secret Manager reference. One variable sets both `max_instances` and the container's `MAX_INSTANCES` (C-19). Session affinity on (C-17 compensating control). No `allUsers` or `allAuthenticatedUsers` invoker: `run.invoker` only for the registered agent service accounts. Validated only |
+| **Dependencies** | DEC-5, DEC-1 (both decided); T-39 (outputs) |
 | **Acceptance criteria** | 14 |
-| **Tests** | Checkov (ingress, SA); a check that `max_instances` is set |
+| **Tests** | Checkov (ingress, SA); Terraform checks that ingress is internal-only, `max_instances` and `MAX_INSTANCES` come from the same variable, session affinity is on, and no `allUsers` or `allAuthenticatedUsers` principal holds `run.invoker` |
 | **Validation** | `terraform init -backend=false && validate`; `terraform fmt -check`; Checkov |
 | **Files owned** | `P/infrastructure/terraform/domain-runtime/*.tf`, `P/infrastructure/terraform/domain-runtime/README.md` |
 | **Status** | `pending` |
@@ -704,7 +710,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Apply the design's "Manifest changes" table |
 | **Components** | `P/pattern.yaml` |
-| **Expected changes** | Description; `interfaces[openapi]` `active` + spec path; extension points (add `topic-provider`, change `policy-provider` and `entity-resolver`, remove `fact-curator`); remove `MEMORY_BANK_CREDENTIALS`; one `api` component with three roles; metrics and audit events; `end_user_token` prohibited; SDK range per T-24; second example config listed. **`metadata.status` stays `proposed`** — changing it belongs to the release track |
+| **Expected changes** | Description; `interfaces[openapi]` `active` + spec path; extension points (add `topic-provider`, change `policy-provider` and `entity-resolver`, remove `fact-curator`); remove `MEMORY_BANK_CREDENTIALS`; declare the DEC-1 HMAC key under `spec.secrets`; one `api` component with three roles, plus `secretAccessor` on that one secret; metrics and audit events; `end_user_token` prohibited; SDK range per T-24; second example config listed. **`metadata.status` stays `proposed`** — changing it belongs to the release track |
 | **Dependencies** | T-03, T-13, T-08, T-11, T-12 |
 | **Acceptance criteria** | 17 |
 | **Tests** | `make validate-manifest` |
@@ -732,7 +738,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 |---|---|
 | **Objective** | Give an adopting domain what it needs to run the service: alerts, dashboards, `written_unverified` and `remediation_failed` triage, and quota-contention triage across domains |
 | **Components** | `P/docs/` |
-| **Expected changes** | New `docs/operations.md` (C-18 references it). `build.md` updated so it is executable. `upgrade.md` states there is no prior version |
+| **Expected changes** | New `docs/operations.md` (C-18 references it). It includes the `remediations` alert's triage (C-05 (b)). If L7 fails: the retention disclosure and a manual purge procedure (C-09). If L12 fails: the public-ingress exception and its compensating controls (C-10). `build.md` updated so it is executable. `upgrade.md` states there is no prior version |
 | **Dependencies** | T-38, T-40 |
 | **Acceptance criteria** | — |
 | **Tests** | None. This task is documentation |
@@ -790,21 +796,21 @@ Every verification method `controls-check.md` names has a task here. None of the
 | C-02 | Implemented, not verified | T-14, T-15, T-16, T-17, T-18, T-07 (extension keys) |
 | C-03 | Implemented, not verified | T-07, T-15, T-17 |
 | C-04 | Implemented, not verified | T-32 (AC3 both-scope test), T-33 |
-| C-05 | **Gap** | T-18, T-25, T-26, T-27, T-33; live L1/L4/L6 (T-24). Gap (a) depends on DEC-3 |
-| C-06 | **Gap** | T-10, T-11, T-29, T-35. The gap itself is DEC-1 |
+| C-05 | **Gap** | T-18, T-25, T-26, T-27, T-33; live L1/L4 (extended)/L6 (T-24). (a) is closed by DEC-3. (b) takes an exception, with compensating controls T-25, T-33, `written_unverified` and the `remediations` alert (T-39) |
+| C-06 | **Gap** | T-09, T-10, T-11, T-12 (HMAC, per DEC-1), T-29, T-35 |
 | C-07 | Implemented, not verified | T-12, T-36, T-39. Failure semantics are DEC-2 |
 | C-08 | Implemented, not verified | T-41 (`spec.secrets`), T-05 scan. Gitleaks evidence blocked by DEC-10 |
-| C-09 | **Gap** | T-07 (bound), T-21 (TTL sent); live L7. Bound value is DEC-8 |
-| C-10 | **Gap** | T-40. The gap itself is DEC-5 |
-| C-11 | **Gap** | T-39, T-40, T-41, `make check-boundary`. The gap itself is DEC-6 |
+| C-09 | **Gap** | T-07 (bound), T-21 (TTL sent); live L7, extended to consolidation updates. Bound value is DEC-8. Exception only if L7 fails (T-43) |
+| C-10 | **Gap** | T-40 (internal-only, per DEC-5); live L12 (T-24). Exception only if L12 fails |
+| C-11 | **Gap** | T-39 (custom role, per DEC-6), T-40, T-41, `make check-boundary` |
 | C-12 | Implemented, not verified | T-38 (build, UID ≠ 0, scan) |
 | C-13 | **Gap** | **T-05** (closes the gap) |
 | C-14 | Not applicable | — |
 | C-15 | Implemented, not verified | T-39, T-40. Checkov stays red on pre-existing `templates/terraform-gcp` until a separate fix (see below) |
-| C-16 | **Gap** | T-21, T-32, T-39; live L10 (T-24) |
-| C-17 | **Gap** | T-22, T-30; live L5. Cross-instance gap is DEC-4 |
+| C-16 | **Gap** | T-21, T-32, T-39; live L10 (T-24). No exception: if L10 fails and the bank has no resource-level policy, return to Stage 2 |
+| C-17 | **Gap** | T-22, T-30, T-40 (session affinity); live L5. Cross-instance gap: exception per DEC-4, after L5 passes |
 | C-18 | Implemented, not verified | T-11, T-22, T-36, T-43 |
-| C-19 | **Gap** | T-22, T-40. Per-instance gap is DEC-4 |
+| C-19 | **Gap** | T-09, T-22, T-39 (quota alert), T-40 (`max_instances` = `MAX_INSTANCES`). Per-instance gap: exception per DEC-4 |
 
 ## Problems found while planning, reported and not fixed
 
@@ -839,3 +845,11 @@ Recorded during implementation. A material architecture change means returning t
 **Gate D.** Not approved, and **held**: the requester will re-confirm or amend Gate C first, because the gap-without-exception validator defect (problem 1) meant Gate C passed with 9 undisclosed Gaps. A platform lead sets `status: approved` with `approved_by` and
 `approved_date`, after reviewing the task breakdown, the PROPOSED recommendations under DEC-1 to
 DEC-11 (DEC-7 in particular, which may send this back to Stage 2), and the de-risking order.
+
+On 2026-10-21 the requester accepted the recommendation for each of the nine Gaps, and this plan
+reflects them. **Gate C is not re-confirmed by that acceptance.** It is re-confirmed when a human
+amends `controls-check.md`, normally through a `design-check-controls --recheck`. That means:
+statuses for the controls this plan now closes (C-06, C-10, C-11, C-13, C-16, and C-05 (a)); and
+`## Approved exceptions` rows, each with an approver, a date, a calendar expiry and a compensating
+control, for C-05 (b), C-19 and C-17 (after L5). The design-artifact
+validator fails until every approved `Gap` has such a row.
