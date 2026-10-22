@@ -28,6 +28,11 @@ jobs:
   secrets:
     name: Secret scanning
     runs-on: ubuntu-latest
+    # gitleaks-action lists the PR's commits through the API to choose the scan range, which
+    # contents: read alone does not allow (403 "Resource not accessible by integration").
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:

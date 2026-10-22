@@ -11,6 +11,7 @@ VENV := .venv
 # (enough to run `make deps` and to print an honest message from everything else).
 PYTHON := $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo python3)
 UV := $(shell command -v uv 2>/dev/null)
+PYTHON_VERSION := 3.12
 
 .PHONY: help deps verify validate-design validate-manifest check-boundary check-release lint test terraform-validate clean-venv
 
@@ -19,11 +20,24 @@ help:
 	@echo
 	@echo "  Using python: $(PYTHON)"
 
-deps: ## Create .venv and install validation + dev dependencies
+# Python 3.12 is the standard (standards/coding.md) and what CI runs. A venv on another version
+# gives local results that are not comparable to CI, so an older one is refused, not reused.
+deps: ## Create .venv (Python 3.12) and install validation + dev dependencies
+	@if [ -x $(VENV)/bin/python ] && ! $(VENV)/bin/python -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))'; then \
+		echo "error: $(VENV) uses Python $$($(VENV)/bin/python -c 'import platform; print(platform.python_version())'); it must be $(PYTHON_VERSION) or newer, as CI is."; \
+		echo "  Recreate it:  make clean-venv deps"; \
+		exit 1; \
+	fi
 	@if [ ! -x $(VENV)/bin/python ]; then \
 		if [ -n "$(UV)" ]; then \
-			echo "Creating $(VENV) with uv"; uv venv $(VENV); \
+			echo "Creating $(VENV) with uv, Python $(PYTHON_VERSION)"; \
+			uv venv --python $(PYTHON_VERSION) $(VENV) || exit 1; \
 		else \
+			python3 -c 'import sys; sys.exit(sys.version_info[:2] < (3, 12))' || { \
+				echo "error: python3 is $$(python3 -c 'import platform; print(platform.python_version())'); $(VENV) needs Python $(PYTHON_VERSION) or newer."; \
+				echo "  Either install uv (https://docs.astral.sh/uv/) and re-run 'make deps' -- uv fetches $(PYTHON_VERSION) itself;"; \
+				echo "  or install python$(PYTHON_VERSION) and run:  python$(PYTHON_VERSION) -m venv $(VENV) && make deps"; \
+				exit 1; }; \
 			echo "Creating $(VENV) with python3 -m venv"; \
 			python3 -m venv $(VENV) || { \
 				echo "error: python3 -m venv failed. On Debian/Ubuntu: sudo apt install python3-venv"; \
@@ -56,23 +70,23 @@ check-boundary: ## Check platform/domain boundary and layering rules
 check-release: ## Check a release-track change touches metadata only (BASE=origin/main)
 	@$(PYTHON) scripts/check_release_commit.py --base $${BASE:-origin/main}
 
+# Runs the same two checks as the Python CI lint job, so a local pass means a CI pass.
 lint: ## Lint Python (reports unavailable if ruff is absent)
-	@if [ -x $(VENV)/bin/ruff ]; then \
-		$(VENV)/bin/ruff check patterns scripts templates; \
-	elif command -v ruff >/dev/null 2>&1; then \
-		ruff check patterns scripts templates; \
-	else \
-		echo "unavailable: ruff is not installed (run 'make deps') — NOT a pass"; \
-	fi
+	@if [ -x $(VENV)/bin/ruff ]; then ruff=$(VENV)/bin/ruff; \
+	elif command -v ruff >/dev/null 2>&1; then ruff=ruff; \
+	else echo "unavailable: ruff is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	$$ruff check patterns scripts templates && $$ruff format --check patterns scripts templates
 
+# pytest exits 5 when it collects nothing: skipped, not passed. Any other failure must fail.
 test: ## Run platform unit tests (reports unavailable if pytest is absent)
-	@if [ -x $(VENV)/bin/pytest ]; then \
-		$(VENV)/bin/pytest -q patterns/*/tests tests 2>/dev/null || echo "no tests collected yet"; \
-	elif command -v pytest >/dev/null 2>&1; then \
-		pytest -q patterns/*/tests tests 2>/dev/null || echo "no tests collected yet"; \
-	else \
-		echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; \
-	fi
+	@if [ -x $(VENV)/bin/pytest ]; then pytest=$(VENV)/bin/pytest; \
+	elif command -v pytest >/dev/null 2>&1; then pytest=pytest; \
+	else echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	dirs=""; for d in patterns/*/tests tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
+	if [ -z "$$dirs" ]; then echo "No test directories present yet — skipped, not passed."; exit 0; fi; \
+	rc=0; $$pytest -q $$dirs || rc=$$?; \
+	if [ $$rc -eq 5 ]; then echo "No tests collected yet — skipped, not passed."; exit 0; fi; \
+	exit $$rc
 
 terraform-validate: ## Validate Terraform (no backend, no apply)
 	@if command -v terraform >/dev/null 2>&1; then \

@@ -56,8 +56,20 @@ def download(lock: dict, into: Path) -> Path:
     print(f"Downloading {tag} from {repo}")
     try:
         subprocess.run(
-            ["gh", "release", "download", tag, "--repo", repo, "--dir", str(into),
-             "--pattern", "*.tar.gz", "--pattern", "SHA256SUMS"],
+            [
+                "gh",
+                "release",
+                "download",
+                tag,
+                "--repo",
+                repo,
+                "--dir",
+                str(into),
+                "--pattern",
+                "*.tar.gz",
+                "--pattern",
+                "SHA256SUMS",
+            ],
             check=True,
         )
     except FileNotFoundError:
@@ -67,14 +79,18 @@ def download(lock: dict, into: Path) -> Path:
 
     archives = sorted(into.glob("*.tar.gz"))
     if len(archives) != 1:
-        sys.exit(f"error: expected exactly one tarball in the release, found {len(archives)}")
+        sys.exit(
+            f"error: expected exactly one tarball in the release, found {len(archives)}"
+        )
     return archives[0]
 
 
 def verify_checksum(archive: Path, sums: Path) -> None:
     """A published checksum is worth nothing unless it is actually checked."""
     if not sums.is_file():
-        sys.exit("error: SHA256SUMS not published with this release — refusing to vendor unverified source")
+        sys.exit(
+            "error: SHA256SUMS not published with this release — refusing to vendor unverified source"
+        )
     actual = hashlib.sha256(archive.read_bytes()).hexdigest()
     expected = None
     for line in sums.read_text(encoding="utf-8").splitlines():
@@ -105,7 +121,9 @@ def extract(archive: Path, name: str) -> None:
             for member in tar.getmembers():
                 target = (staged / member.name).resolve()
                 if not str(target).startswith(str(staged.resolve())):
-                    sys.exit(f"error: archive member escapes the extraction directory: {member.name}")
+                    sys.exit(
+                        f"error: archive member escapes the extraction directory: {member.name}"
+                    )
             tar.extractall(staged, filter="data")
         inner = staged / name
         if not inner.is_dir():
@@ -120,6 +138,7 @@ def record_digest(lock: dict) -> None:
     text = LOCK.read_text(encoding="utf-8")
     if "manifestDigest:" in text:
         import re
+
         text = re.sub(r"(manifestDigest:\s*).*", rf"\g<1>{digest}", text, count=1)
     else:
         text = text.rstrip("\n") + f"\n  manifestDigest: {digest}\n"
@@ -129,13 +148,17 @@ def record_digest(lock: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="verify only; change nothing")
+    parser.add_argument(
+        "--check", action="store_true", help="verify only; change nothing"
+    )
     args = parser.parse_args()
 
     lock = load_lock()
 
     if args.check:
-        return subprocess.call([sys.executable, str(ROOT / "scripts" / "verify_pattern_lock.py")])
+        return subprocess.call(
+            [sys.executable, str(ROOT / "scripts" / "verify_pattern_lock.py")]
+        )
 
     with tempfile.TemporaryDirectory() as tmp:
         into = Path(tmp)

@@ -33,7 +33,11 @@ jobs:
       - name: Type check pattern source
         run: |
           shopt -s nullglob
-          dirs=(patterns/*/src)
+          # A src/ holding only a README is not Python to check: skip it rather than fail.
+          dirs=()
+          for d in patterns/*/src; do
+            if [ -n "$(find "$d" -name '*.py' -print -quit)" ]; then dirs+=("$d"); fi
+          done
           if [ ${#dirs[@]} -eq 0 ]; then
             echo "No pattern source present yet — skipped, not passed."
             exit 0
@@ -59,4 +63,11 @@ jobs:
             echo "No test directories present yet — skipped, not passed."
             exit 0
           fi
-          pytest -q "${existing[@]}"
+          # pytest exits 5 when it collects nothing: skipped, not passed. Any other failure fails.
+          rc=0
+          pytest -q "${existing[@]}" || rc=$?
+          if [ "$rc" -eq 5 ]; then
+            echo "No tests collected yet — skipped, not passed."
+            exit 0
+          fi
+          exit "$rc"
