@@ -437,17 +437,17 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | **Files owned** | `P/src/providers/governor.py`, `P/src/providers/retry.py`, `P/tests/test_governor.py`, `P/tests/test_retry.py` |
 | **Status** | `pending` |
 
-#### T-23 — Write the opt-in live contract tests for L1–L10
+#### T-23 — Write the opt-in live contract tests for L1–L11
 
 | | |
 |---|---|
-| **Objective** | One live test per assumption L1–L10, excluded from the default run, that records its observation |
+| **Objective** | One live test per assumption L1–L11, excluded from the default run, that records its observation |
 | **Components** | `P/tests/live/` |
-| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. L10 needs two domains' service accounts, so it is a separate, explicitly labelled test |
+| **Expected changes** | Marked `live`, enabled by an environment flag, skipped (and reported as skipped) without it. L10 needs two domains' service accounts, so it is a separate, explicitly labelled test. **L11** (added 2026-10-21, from 006 / proposed C-20): does Memory Bank support a customer-managed key? The probe creates a bank, or reads an existing one's configuration, with a Cloud KMS key set. It **passes** only if the provider accepts the key and reports it as the bank's encryption key. A rejected field, an ignored field, or no such field all count as **no**. The answer is observed, never inferred from documentation |
 | **Dependencies** | T-21 |
 | **Acceptance criteria** | 9, 13, 14 (live halves) |
 | **Tests** | `tests/live/test_memory_bank_live.py` |
-| **Validation** | `uv run --project P pytest P/tests -q` shows them **skipped**; a collection-only run lists ten tests |
+| **Validation** | `uv run --project P pytest P/tests -q` shows them **skipped**; a collection-only run lists eleven tests |
 | **Files owned** | `P/tests/live/__init__.py`, `P/tests/live/test_memory_bank_live.py` |
 | **Status** | `pending` |
 
@@ -455,9 +455,9 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 
 | | |
 |---|---|
-| **Objective** | Run T-23 against a real bank in the platform project and record each output. This settles L1–L10, and with them DEC-3, DEC-4, DEC-11 and the AC13 bound *N* |
+| **Objective** | Run T-23 against a real bank in the platform project and record each output. This settles L1–L11, and with them DEC-3, DEC-4, DEC-11 and the AC13 bound *N* |
 | **Components** | Design folder |
-| **Expected changes** | `live-verification.md`: date, commit, SDK version, command, raw output and verdict per L-item. **Claude cannot run this**: it needs platform-project credentials, and a bank provisioned by platform Terraform, which this repository never applies. If L1, L5 or L6 fail, stop and re-enter Stage 2 |
+| **Expected changes** | `live-verification.md`: date, commit, SDK version, command, raw output and verdict per L-item. **Claude cannot run this**: it needs platform-project credentials, and a bank provisioned by platform Terraform, which this repository never applies. If L1, L5 or L6 fail, stop and re-enter Stage 2. If L11 is **no**, that is a disclosure every adopting domain needs (006 AC4), not a configuration option |
 | **Dependencies** | T-23; a provisioned bank (T-39 applied by the platform team) |
 | **Acceptance criteria** | 9, 13, 14 (live evidence) |
 | **Tests** | T-23's suite |
