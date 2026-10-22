@@ -24,9 +24,13 @@ from _common import REPO_ROOT, RED, RESET, YELLOW  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pattern", required=True, help="Pattern name, e.g. memory-manager")
+    parser.add_argument(
+        "--pattern", required=True, help="Pattern name, e.g. memory-manager"
+    )
     parser.add_argument("--base-url", help="Base URL of the deployment under test")
-    parser.add_argument("--list", action="store_true", help="List the suite without running it")
+    parser.add_argument(
+        "--list", action="store_true", help="List the suite without running it"
+    )
     args = parser.parse_args()
 
     suite = REPO_ROOT / "patterns" / args.pattern / "conformance"
@@ -56,7 +60,9 @@ def main() -> int:
     cmd = [sys.executable, "-m", "pytest", "-q", str(suite)]
     print(f"Running: {' '.join(cmd)}  (target {args.base_url})")
     try:
-        return subprocess.call(cmd, env={"CONFORMANCE_BASE_URL": args.base_url, "PATH": "/usr/bin:/bin"})
+        return subprocess.call(
+            cmd, env={"CONFORMANCE_BASE_URL": args.base_url, "PATH": "/usr/bin:/bin"}
+        )
     except FileNotFoundError:
         print(f"{YELLOW}unavailable{RESET}: pytest is not installed")
         return 3
