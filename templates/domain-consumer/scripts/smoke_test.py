@@ -36,15 +36,23 @@ def identity_token(explicit: str | None) -> str:
     try:
         return subprocess.run(
             ["gcloud", "auth", "print-identity-token"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
     except (FileNotFoundError, subprocess.CalledProcessError):
-        sys.exit("error: no identity token. Pass --token, set $ID_TOKEN, or authenticate gcloud.")
+        sys.exit(
+            "error: no identity token. Pass --token, set $ID_TOKEN, or authenticate gcloud."
+        )
 
 
 def call(
-    base: str, method: str, path: str, token: str,
-    body: dict | None = None, idempotency_key: str | None = None,
+    base: str,
+    method: str,
+    path: str,
+    token: str,
+    body: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> tuple[int, dict | str]:
     request = urllib.request.Request(
         f"{base.rstrip('/')}{path}",
@@ -95,16 +103,26 @@ def main() -> int:
     status, payload = call(args.base_url, "GET", "/readyz", token)
     check("readiness", status == 200, f"status {status}: {payload}")
     if status != 200:
-        print("\n  /readyz is failing. If this is a first deployment, the platform team may not")
-        print("  have applied the memory bank IAM binding yet. Check that before debugging code.")
+        print(
+            "\n  /readyz is failing. If this is a first deployment, the platform team may not"
+        )
+        print(
+            "  have applied the memory bank IAM binding yet. Check that before debugging code."
+        )
         return 1
 
     # 2. A write is accepted and durably enqueued.
     key = str(uuid.uuid4())
     value = f"smoke-{key[:8]}"
     status, payload = call(
-        args.base_url, "POST", "/v1/memories", token,
-        body={"fact": {"attribute": args.attribute, "value": value}, "extraction_mode": "none"},
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        body={
+            "fact": {"attribute": args.attribute, "value": value},
+            "extraction_mode": "none",
+        },
         idempotency_key=key,
     )
     # 202 means durably enqueued. 503 means NOT accepted -- a real distinction, not a nuance.
@@ -112,33 +130,52 @@ def main() -> int:
 
     # 3. The same key twice must produce one effect, not two.
     status_repeat, _ = call(
-        args.base_url, "POST", "/v1/memories", token,
-        body={"fact": {"attribute": args.attribute, "value": value}, "extraction_mode": "none"},
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        body={
+            "fact": {"attribute": args.attribute, "value": value},
+            "extraction_mode": "none",
+        },
         idempotency_key=key,
     )
-    check("duplicate idempotency key is accepted idempotently", status_repeat in (200, 202),
-          f"status {status_repeat}")
+    check(
+        "duplicate idempotency key is accepted idempotently",
+        status_repeat in (200, 202),
+        f"status {status_repeat}",
+    )
 
     # 4. A different payload under the same key must be refused.
     status_conflict, _ = call(
-        args.base_url, "POST", "/v1/memories", token,
-        body={"fact": {"attribute": args.attribute, "value": value + "-different"},
-              "extraction_mode": "none"},
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        body={
+            "fact": {"attribute": args.attribute, "value": value + "-different"},
+            "extraction_mode": "none",
+        },
         idempotency_key=key,
     )
-    check("same key with a different payload returns 422", status_conflict == 422,
-          f"status {status_conflict}")
+    check(
+        "same key with a different payload returns 422",
+        status_conflict == 422,
+        f"status {status_conflict}",
+    )
 
     # 5. The value reads back. Writes are asynchronous and provider reads are eventually
     #    consistent, so this is retried rather than asserted once.
     found = False
     for _ in range(10):
         status, payload = call(
-            args.base_url, "GET", f"/v1/memories?attribute={args.attribute}", token)
+            args.base_url, "GET", f"/v1/memories?attribute={args.attribute}", token
+        )
         if status == 200 and value in json.dumps(payload):
             found = True
             break
         import time
+
         time.sleep(3)
     check("recall returns the written value", found, "not visible within 30s")
 
@@ -146,18 +183,28 @@ def main() -> int:
     request = urllib.request.Request(f"{args.base_url.rstrip('/')}/v1/memories")
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
-            check("unauthenticated request is refused", False, f"status {response.status}")
+            check(
+                "unauthenticated request is refused", False, f"status {response.status}"
+            )
     except urllib.error.HTTPError as exc:
-        check("unauthenticated request is refused", exc.code in (401, 403), f"status {exc.code}")
+        check(
+            "unauthenticated request is refused",
+            exc.code in (401, 403),
+            f"status {exc.code}",
+        )
     except urllib.error.URLError as exc:
         check("unauthenticated request is refused", False, f"unreachable: {exc.reason}")
 
     print()
     if failures:
-        print(f"{RED}SMOKE TEST FAILED{RESET} — {len(failures)} check(s): {', '.join(failures)}")
+        print(
+            f"{RED}SMOKE TEST FAILED{RESET} — {len(failures)} check(s): {', '.join(failures)}"
+        )
         return 1
     print(f"{GREEN}SMOKE TEST PASSED{RESET}")
-    print("\nThis proves the live path works. It does NOT check that memory content stays out of")
+    print(
+        "\nThis proves the live path works. It does NOT check that memory content stays out of"
+    )
     print("logs — verify that separately; see docs/runbook.md.")
     return 0
 

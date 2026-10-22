@@ -21,7 +21,15 @@ from _common import REPO_ROOT, Report, require_deps  # noqa: E402
 yaml, jsonschema = require_deps()
 
 SCHEMA_PATH = REPO_ROOT / "schemas" / "pattern.schema.json"
-REQUIRED_DIRS = ["contracts", "src", "config", "extensions", "tests", "conformance", "examples"]
+REQUIRED_DIRS = [
+    "contracts",
+    "src",
+    "config",
+    "extensions",
+    "tests",
+    "conformance",
+    "examples",
+]
 REQUIRED_FILES = ["README.md", "pattern.yaml", "CHANGELOG.md"]
 
 
@@ -89,7 +97,9 @@ def validate_pattern(folder: Path, schema: dict, report: Report) -> None:
     for label, relpath in referenced:
         target = REPO_ROOT / relpath
         if not target.exists():
-            report.error(f"{rel}/pattern.yaml", f"{label} points to missing path: {relpath}")
+            report.error(
+                f"{rel}/pattern.yaml", f"{label} points to missing path: {relpath}"
+            )
         else:
             report.ok()
 
@@ -101,7 +111,9 @@ def validate_pattern(folder: Path, schema: dict, report: Report) -> None:
         try:
             config_schema = json.loads(schema_path.read_text(encoding="utf-8"))
         except Exception as exc:
-            report.error(str(schema_path.relative_to(REPO_ROOT)), f"not valid JSON: {exc}")
+            report.error(
+                str(schema_path.relative_to(REPO_ROOT)), f"not valid JSON: {exc}"
+            )
             config_schema = None
         if config_schema is not None:
             report.ok()
@@ -169,7 +181,11 @@ def main(argv: list[str]) -> int:
         folders = [Path(a).resolve() for a in argv]
     else:
         patterns = REPO_ROOT / "patterns"
-        folders = sorted(p for p in patterns.iterdir() if p.is_dir()) if patterns.is_dir() else []
+        folders = (
+            sorted(p for p in patterns.iterdir() if p.is_dir())
+            if patterns.is_dir()
+            else []
+        )
 
     report = Report("Pattern manifest validation")
     if not folders:

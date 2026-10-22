@@ -13,7 +13,13 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-GREEN, RED, YELLOW, DIM, RESET = "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+GREEN, RED, YELLOW, DIM, RESET = (
+    "\033[32m",
+    "\033[31m",
+    "\033[33m",
+    "\033[2m",
+    "\033[0m",
+)
 
 
 def require_deps() -> tuple[Any, Any]:
@@ -67,10 +73,14 @@ class Report:
             print(f"{RED}error{RESET}   {e}")
         passed = self.checks - len(self.errors)
         if self.errors:
-            print(f"\n{RED}FAILED{RESET}  {passed}/{self.checks} checks passed, "
-                  f"{len(self.errors)} error(s), {len(self.warnings)} warning(s)")
+            print(
+                f"\n{RED}FAILED{RESET}  {passed}/{self.checks} checks passed, "
+                f"{len(self.errors)} error(s), {len(self.warnings)} warning(s)"
+            )
             return 1
-        print(f"\n{GREEN}PASSED{RESET}  {self.checks} checks, {len(self.warnings)} warning(s)")
+        print(
+            f"\n{GREEN}PASSED{RESET}  {self.checks} checks, {len(self.warnings)} warning(s)"
+        )
         return 0
 
 
@@ -83,7 +93,7 @@ def parse_front_matter(path: Path, yaml_mod: Any) -> tuple[dict[str, Any] | None
     if end == -1:
         return None, text
     raw = text[4:end]
-    body = text[end + 5:]
+    body = text[end + 5 :]
     try:
         data = yaml_mod.safe_load(raw)
     except Exception:

@@ -33,7 +33,9 @@ def main() -> int:
         print("error: pattern.lock.yaml not found")
         return 1
     if not VENDORED_MANIFEST.is_file():
-        print("error: vendor/pattern/pattern.yaml not found -- run scripts/vendor_pattern.py")
+        print(
+            "error: vendor/pattern/pattern.yaml not found -- run scripts/vendor_pattern.py"
+        )
         return 1
 
     lock = yaml.safe_load(LOCK.read_text(encoding="utf-8"))["pattern"]

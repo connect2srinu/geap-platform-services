@@ -9,7 +9,43 @@ None of it can be committed to the repository.
 > review, no design and no passing checks — and the repository will look fully governed while that
 > happens.
 
-## 1. Branch protection / ruleset on `main`
+## 0. Two profiles — and which one this repository runs
+
+This repository (`connect2srinu/geap-platform-services`, public, personal account) has **one
+maintainer**. GitHub does not let a pull request's author approve it. With one maintainer, a
+required approval can't be given by anyone, so it can only be met by turning enforcement off for
+admins, which makes the protection theatrical.
+
+| | **Single-maintainer profile** (this repository) | **Organization profile** (the office organization) |
+|---|---|---|
+| Required approvals | **0** | **≥ 1** |
+| Require review from Code Owners | **off** | **on**, with real teams (§7) |
+| Required status checks | **on** (§2) | **on** (§2) |
+| Require conversation resolution | **on** | **on** |
+| Allow force pushes / deletions on `main` | **off** / **off** | **off** / **off** |
+| Include administrators (`enforce_admins`) | **on** | **on** |
+
+**Gate E is not enforced in this repository.** No second human reviews a pull request before it
+merges. That is a fact about the repository, not a temporary state, and nothing here should imply
+otherwise. The mitigation is **CI plus the design-artifact validator**, not review:
+
+- every required status check must pass, and an administrator cannot bypass them
+  (`enforce_admins: true`);
+- `scripts/validate_design_artifacts.py` fails an artifact approved out of order, approved by an AI
+  agent, or approved with an undisclosed control gap;
+- gates A to D are still recorded in the artifacts by a human, and gate F is still an explicit
+  human merge.
+
+What this does **not** mitigate: no second person reads the design, the code or the controls
+assessment before merge. A defect the maintainer misses, which CI does not test, ships.
+
+**Never set `enforce_admins: false` to get around the missing reviewer.** That turns every other
+setting into a suggestion for the one person able to merge.
+
+The organization profile is the one this document describes from §1 onward, and the one adopting
+organizations should run. Gate E actually works there.
+
+## 1. Branch protection / ruleset on `main` (organization profile)
 
 | Setting | Value |
 |---|---|
@@ -72,7 +108,11 @@ contract with every adopting domain and cannot be withdrawn once consumed.
 
 ## 7. CODEOWNERS teams
 
-`.github/CODEOWNERS` contains `@<org>/...` placeholders. Replace them with real GitHub teams.
+**In this repository**, `.github/CODEOWNERS` names `@connect2srinu`, the one maintainer, on every
+path. It assigns nothing that review could enforce (§0), but it matches a real account, and
+`codeowners/errors` returns none.
+
+**In the organization**, replace `@connect2srinu` with real GitHub teams.
 **A CODEOWNERS file referencing non-existent teams silently matches nobody** — which looks identical
 to a configured repository until the first unreviewed merge.
 

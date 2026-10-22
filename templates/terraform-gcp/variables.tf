@@ -40,7 +40,7 @@ variable "audit_sink_topic" {
 }
 
 variable "max_writes_per_minute" {
-  description = "This domain's allocated share of the shared project Memory Bank quota. Enforced by the worker's rate governor. See standards/architecture.md on shared quota."
+  description = "This domain's allocated share of the shared project Memory Bank quota. Enforced by the API's in-process domain budget (design/001-memory-manager/design.md). See standards/architecture.md on shared quota."
   type        = number
 
   validation {

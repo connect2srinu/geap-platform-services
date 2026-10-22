@@ -48,11 +48,10 @@ CI, nothing outside your team will notice if you remove it — which is why it i
    ```bash
    pytest -q vendor/pattern/conformance/
    ```
-5. **Provide your service account emails to the platform team** so they can create the memory bank IAM
+5. **Provide your service account email to the platform team** so they can create the memory bank IAM
    binding:
    ```bash
    terraform -chdir=infrastructure/terraform output api_service_account
-   terraform -chdir=infrastructure/terraform output worker_service_account
    ```
 6. **Agree your quota allocation** with the platform team. The project's Memory Bank quota is shared
    across every domain; `max_writes_per_minute` is your share of it.
