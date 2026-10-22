@@ -201,7 +201,7 @@ carried as implementation requirements under C-01 and C-02:
 | **Implementation** | Per-topic `retentionDays`, bounded by a platform maximum in the schema. Enforcement uses a per-memory provider TTL set on write. **Recheck:** L7 is extended: the TTL must survive consolidation, and expiry is observed. **VERIFIED by introspecting SDK 2.3.0, not live:** `GenerateMemoriesConfig` has no per-request `ttl`, and `Memories` has no update method. TTL for generated memories is bank-level (`ttl_config.granular_ttl_config.generate_created_ttl` / `generate_updated_ttl`). So the approved design's per-topic `retentionDays`, set on write, cannot be carried by `GenerateMemories` with this SDK. One bank per domain means one retention period per domain. |
 | **Verification** | Schema test: `retentionDays` above the maximum rejected (T-07). Tier 1 live: L7 (T-24), against a bank with generate TTLs, with expiry observed. |
 | **Status** | Gap |
-| **Evidence** | Two open items. (1) **Pending Tier 1 (L7):** whether the bank-level TTL applies, survives consolidation and expires memories. If L7 fails, the contingent exception below applies. (2) **OPEN — a design decision:** per-topic retention cannot be expressed on the write path with SDK 2.3.0. Even if L7 passes, enforcement is per domain, not per topic, unless the design changes (for example, a domain-wide retention equal to the shortest topic retention, or one bank per retention class). L7 alone cannot close this. The bounds are still OPEN with Legal (DEC-8). |
+| **Evidence** | Two open items. (1) **Pending Tier 1 (L7):** whether the bank-level TTL applies, survives consolidation and expires memories. If L7 fails, the contingent exception below applies. (2) **A design defect, returned to Stage 2 (requester, 2026-10-22):** the configuration schema promises per-topic `retentionDays`, but with SDK 2.3.0 and one bank per domain the provider supports only one retention period per domain. No L7 result resolves this. C-09 cannot be closed, and its contingent exception cannot be approved, until the Stage 2 pass settles retention granularity (design.md "Approval"). The bounds are still OPEN with Legal (DEC-8). |
 
 ### C-10 — Minimal network exposure
 
@@ -316,7 +316,7 @@ queue-depth and dead-letter-depth metrics, because v0.1.0 has no queue (D1).
 | Control | Gap | Risk | Plan | Owner |
 |---|---|---|---|---|
 | C-05 | (b) Prohibited content persists between consolidation and remediation, and until the next recall when verification is incomplete. (a) is closed in the plan by DEC-3; its outcome comes from L4 | Restricted content persisted in the bank despite classification | Exception (row below), **pending Tier 1 L1–L3**. Run T-24 | Security reviewer |
-| C-09 | Bank-level TTL unverified (L7). Per-topic retention cannot be expressed on the write path with SDK 2.3.0. Bounds OPEN (Q11) | Data kept beyond policy | Run L7 (T-24). Decide retention granularity, which is a design change. Obtain the Legal bounds. Contingent exception only if L7 fails | Platform architect + Legal + security reviewer |
+| C-09 | **Design defect (Stage 2):** per-topic retention is promised but cannot be enforced with one bank per domain. Bank-level TTL also unverified (L7). Bounds OPEN (Q11) | Data kept beyond policy, or a retention contract the provider can't honour | Stage 2 pass decides retention granularity. Run L7 (T-24). Obtain the Legal bounds. The contingent exception is revisited after Stage 2 | Requester (Stage 2) + Legal + security reviewer |
 | C-17 | No cross-instance idempotency or key-reuse detection | Duplicate writes; undetected key reuse | Exception (row below), **pending Tier 1 L5** | Platform architect + security reviewer |
 | C-19 | Per-instance budget; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together | One domain exhausting shared quota | Exception (row below); not Tier-1-dependent | Platform architect + security reviewer |
 
@@ -328,15 +328,21 @@ Tier 2 L12 before release), C-11 (DEC-6), C-13 (T-05), C-16 (no exception; Tier 
 | Control | Exception | Compensating control | Approver | Date | Expires |
 |---|---|---|---|---|---|
 | C-05 | (b) Prohibited content can persist in the bank between provider consolidation and remediation, and until the next recall when verification is incomplete. **Pending Tier 1: L1, L2, L3** | Read-back and re-classification of every touched memory (T-25); recall-time re-classification and withholding (T-33); `written_unverified`; per-domain `remediations` alert (T-39) |  |  |  |
-| C-09 | **Contingent: only if L7 fails.** No enforced TTL on generated memories. **Pending Tier 1: L7** | Retention disclosure in the adopting domain's runbook, and a manual purge procedure (T-43) |  |  |  |
+| C-09 | **Contingent: only if L7 fails, and revisited after the Stage 2 pass on retention.** No enforced TTL on generated memories. **Pending Tier 1: L7** | Retention disclosure in the adopting domain's runbook, and a manual purge procedure (T-43) |  |  |  |
 | C-17 | No cross-instance idempotency or key-reuse detection in v0.1.0. **Pending Tier 1: L5** (if L5 fails, there is no exception: Stage 2) | Required `Idempotency-Key` and per-instance replay (T-30); bounded, budgeted retry (T-22); provider-side dedup (L5); Cloud Run session affinity (T-40) |  |  |  |
-| C-19 | The per-domain budget is enforced per instance; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together. Not Tier-1-dependent | Platform-owned per-domain quota alert and `quota_consumed{domain}` (T-39); one variable for `max_instances` and `MAX_INSTANCES`, with refusal to start without it (T-09, T-40) |  |  |  |
+| C-19 | The per-domain budget is enforced per instance; a forked deployment can raise `max_instances` and `MAX_INSTANCES` together. Not Tier-1-dependent. **Drafted 2026-10-22 for the approver's confirmation** | Platform-owned per-domain quota alert and `quota_consumed{domain}` (T-39); one variable for `max_instances` and `MAX_INSTANCES`, with refusal to start without it (T-09, T-40) | Srinivasa reddy | 2026-10-22 | 2027-04-22 |
 
 **Draft rows. None is approved.** The requester accepted these exceptions in principle on
-2026-10-21. Approver, Date and Expires are **deliberately empty**: only the security reviewer fills
-them, and the design-artifact validator rejects an approved assessment while any of the three is
-empty for a `Gap`. Each expiry must be a calendar date (for C-17 and C-19, tied to v0.2.0). Delete
-the C-09 row if L7 passes. Delete the C-17 row and return to Stage 2 if L5 fails.
+2026-10-21.
+
+- **C-05, C-09, C-17:** Approver, Date and Expires stay **deliberately empty until Tier 1 runs**
+  (requester, 2026-10-22). The design-artifact validator rejects an approved assessment while any of
+  the three is empty for a `Gap`. Delete the C-09 row if L7 passes and Stage 2 makes it unnecessary.
+  Delete the C-17 row, and return to Stage 2, if L5 fails.
+- **C-19** is filled at the requester's instruction, for confirmation. Approver and date are as
+  instructed. **The expiry `2027-04-22` is PROPOSED, not given:** no v0.2.0 date or maximum exception
+  length exists in the repository, so it is six months from the date. Change it if v0.2.0 has a
+  target. The row takes effect only when the assessment is approved.
 
 ## Approval
 
@@ -345,14 +351,12 @@ Gate C. A security reviewer sets `status: approved`. CI fails an approved assess
 
 **Re-confirmation (2026-10-22 recheck) needs:**
 
-1. T-24's Tier 1 record, or the reviewer's explicit decision to approve before it exists.
+1. **T-24's Tier 1 record.** The reviewer will not approve on a promise of evidence (2026-10-22).
 2. Approver, date and calendar expiry on each exception row that applies, after Tier 1, with rows
-   that do not apply deleted.
-3. A decision on C-09's retention granularity. It changes "Retention (Q11)" in design.md, and may
-   need Gate B re-approval.
-4. Whether design.md's tiering amendment of 2026-10-22 needs Gate B re-approval.
-5. Still open from the first assessment: **O6** (the `policy-provider` default relaxed to
-   `passthrough`).
+   that do not apply deleted. C-19's row is drafted for confirmation now.
+3. **The Stage 2 pass** on retention granularity (C-09), on `disable_memory_revisions` vs rollback
+   (C-05 (a)), and on **O6**. design.md is re-approved at the end of it (design.md "Approval").
+4. Decided 2026-10-22: the tier split itself needs no Gate B re-approval.
 
 D3 and Q5 are now decided (DEC-3; the C-05 (b) exception). Live verification is no longer a single
 precondition: Tier 1 precedes this gate, and Tier 2 precedes release (T-45).

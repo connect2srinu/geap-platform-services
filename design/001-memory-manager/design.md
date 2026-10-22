@@ -554,9 +554,9 @@ appears. Removing the redaction must make the test fail.
 **Amended 2026-10-22 at the requester's instruction.** The version approved at Gate B required
 L1–L10 before Gate C. Two checks cannot run then. L10 needs two domains' service accounts bound to
 their own banks by platform Terraform (T-39), and L12 (added with DEC-5) needs the runtime deployed
-from T-40. Both exist only after Gate D. The checks are therefore split into two tiers. This note
-does not change the front-matter status; whether the amendment needs Gate B re-approval is the
-approver's decision.
+from T-40. Both exist only after Gate D. The checks are therefore split into two tiers. **The
+approver decided on 2026-10-22 that the tier split alone needs no Gate B re-approval**; this dated
+note records it.
 
 - **Tier 1 — before the Gate C re-confirmation.** L1–L9 and L11. They can run against a provisioned
   bank with the pinned SDK and no pattern code, using `spike/probe_memory_bank.py` (tasks.md T-24).
@@ -590,14 +590,17 @@ the prior art's `control-plane-api/uv.lock` pins) in the prior art's virtual env
    field, and `Memories` has no update method. A per-memory TTL can be set only through `create`
    (`MemoryConfig.ttl`). For generated memories, TTL is **bank-level**:
    `managed_semantic_memory_config.ttl_config.granular_ttl_config` holds `generate_created_ttl` and
-   `generate_updated_ttl`. L7 therefore tests the bank-level path. **Consequence — OPEN:** "Retention
-   (Q11)" says retention is per topic and set on write. With this SDK, `GenerateMemories` can't carry
-   a per-topic TTL. One bank per domain (ADR-0003) then means one retention period per domain. Not
-   resolved here; it needs a design decision.
+   `generate_updated_ttl`. L7 therefore tests the bank-level path. **Consequence — a design defect,
+   returned to Stage 2 (requester, 2026-10-22):** "Retention (Q11)" and the configuration schema
+   promise per-topic `retentionDays`, set on write. With this SDK, `GenerateMemories` can't carry a
+   per-topic TTL. With one bank per domain (ADR-0003), one retention period per domain is all the
+   provider supports. No L7 result resolves this. See "Approval".
 2. **`GenerateMemoriesConfig` also exposes `disable_memory_revisions`, `revision_ttl` and
    `disable_consolidation`.** The first two bear on C-05 (a), because a prohibited revision might
    never be retained. The probe records `disable_memory_revisions` as an observation under L4. The
-   third bears on L1 and L5. **Recorded, not adopted.**
+   third bears on L1 and L5. **Recorded, not adopted.** Disabling revisions would close C-05 (a)
+   outright, but it removes the rollback that D3 prefers as the remedy. That trade-off is a Stage 2
+   input, alongside the retention defect.
 
 ## Assumptions and open questions
 
@@ -635,6 +638,22 @@ Numbers are tentative. `design-record-decision` writes them only after Gate B ap
 
 ## Approval
 
-**Gate B.** Not approved. A platform architect sets `status: approved` with `approved_by` and
-`approved_date` after reviewing the approach, D1–D7, and O1 in particular, which decides whether this
-design stays within the approved intent.
+**Gate B.** **Approved** by Srinivasa reddy on 2026-10-21, as the front matter records. The approval
+covered the approach, D1–D7, and O1, which decides whether this design stays within the approved
+intent. (Corrected 2026-10-22: this section previously still read "Not approved", contradicting the
+front matter.)
+
+**Amended 2026-10-22, no re-approval:** live verification is split into two tiers (see "Live
+verification"). This is the approver's decision.
+
+**Stage 2 re-entry, opened 2026-10-22 by the requester.** The retention defect (see "Live
+verification", finding 1) means the design contradicts the provider. A Stage 2 pass resolves it, and
+design.md is re-approved at the end of that pass. Inputs to the pass:
+
+1. **Retention granularity.** Per-topic `retentionDays` cannot be enforced through `GenerateMemories`
+   with one bank per domain. **OPEN**, for the requester.
+2. **`disable_memory_revisions` vs rollback** (finding 2): closing C-05 (a) outright, against keeping
+   D3's rollback. **OPEN**.
+3. **O6**: the `policy-provider` default relaxed to `passthrough`. Carried in from Gate C.
+
+Tier 1 live evidence (tasks.md T-24) is gathered alongside; L4 and L7 inform items 1 and 2.

@@ -879,3 +879,9 @@ statuses for the controls this plan now closes (C-06, C-10, C-11, C-13, C-16, an
 control, for C-05 (b), C-19 and C-17 (after L5). The design-artifact
 validator fails until every approved `Gap` has such a row. Tier 1 evidence (T-24) comes first,
 because the C-05 (b) and C-17 exceptions, and C-09's contingent one, depend on it.
+
+**Stage 2 re-entry (2026-10-22).** The requester returned the design to Stage 2 for the retention
+defect (design.md "Approval"), with `disable_memory_revisions` vs rollback and O6 as further inputs.
+Gate D stays held until that pass ends and Gate C is re-confirmed. The tasks most likely to change
+are T-07 (schema), T-21 (TTL on write), T-26/T-27 (remediation), T-39 (bank TTL) and T-43
+(disclosure).
