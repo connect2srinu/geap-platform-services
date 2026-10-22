@@ -21,12 +21,10 @@ spec:
       nonRoot: true
 
   interfaces:
-    # PLANNED, not active: the design is not approved, so no contract has been written.
-    # Declaring this 'active' with a stub spec would misrepresent the pattern as adoptable.
-    # It becomes 'active' with a real spec path when the design passes Gate B.
     - kind: openapi
+      spec: patterns/memory-manager/contracts/openapi.yaml
       version: v1
-      status: planned
+      status: active
     # MCP is a planned second transport over the SAME contract and semantics,
     # never a second contract. Deliberately not stubbed.
     - kind: mcp
