@@ -16,6 +16,8 @@ patterns_touched: [memory-manager]
 
 Produced on 2026-10-21 on branch `design/001-memory-manager` at `54bfa9f`.
 
+T-44 added on 2026-10-21 at the requester's instruction (consumer-template drift found in 005).
+
 - **VERIFIED** — front matter read: `intent.md`, `design.md` and `controls-check.md` are all
   `status: approved` (Srinivasa reddy, 2026-10-21).
 - Read in full: the three approved artifacts; `patterns/memory-manager/pattern.yaml`,
@@ -102,6 +104,7 @@ flowchart LR
         T35[T-35 sentinel] & T36[T-36 telemetry] & T37[T-37 conformance] --> T38[T-38 image CI]
         T39[T-39 NFR TF] & T40[T-40 runtime TF]
         T41[T-41 manifest] --> T42[T-42 README] & T43[T-43 runbook]
+        T43 --> T44[T-44 consumer template]
     end
     s1 --> s2 --> s3 --> s5
     s4 --> s5 --> s6 --> s7
@@ -737,6 +740,20 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | **Files owned** | `P/docs/operations.md`, `P/docs/build.md`, `P/docs/upgrade.md` |
 | **Status** | `pending` |
 
+#### T-44 — Rewrite the domain-consumer template against the v1 contract
+
+| | |
+|---|---|
+| **Objective** | Make `templates/domain-consumer` describe the synchronous v0.1.0 tool API that 001 actually ships, instead of the async design it predates |
+| **Components** | `templates/domain-consumer/docs/agent-api.md`, `scripts/smoke_test.py`, `docs/runbook.md` |
+| **Expected changes** | **VERIFIED** drift (2026-10-21, raised in 005): `agent-api.md` says `remember` is `POST /v1/memories` returning `202` and is "durably enqueued", with provider throttling "parked"; `smoke_test.py` asserts `202`; `runbook.md` covers dead-letter and queue-age triage for a worker and queue that don't exist. Rewrite them from `contracts/openapi.yaml`, not from memory: `POST /v1/remember` / `/v1/recall`, `200` with `outcome` ∈ `written` \| `written_unverified` \| `noop`, the error catalogue, `Retry-After`, the per-instance idempotency window. The runbook triages `written_unverified`, `remediation_failed`, `DOMAIN_BUDGET_EXHAUSTED` and `PROVIDER_UNAVAILABLE`. `agent-api.md` is the contract agent teams code against, so every status and code in it must trace to the spec |
+| **Dependencies** | **T-03** (the contract must exist first); T-43 (the runbook structure it mirrors) |
+| **Acceptance criteria** | 18 (a domain onboarding from the template gets the shipped contract) |
+| **Tests** | `smoke_test.py` itself, run against the locally built reference image from T-38; a check that every status code and error code in `agent-api.md` appears in `contracts/openapi.yaml` |
+| **Validation** | `python3 templates/domain-consumer/scripts/smoke_test.py --base-url http://127.0.0.1:8080` against the local image; `make lint check-boundary` |
+| **Files owned** | `templates/domain-consumer/docs/agent-api.md`, `templates/domain-consumer/scripts/smoke_test.py`, `templates/domain-consumer/docs/runbook.md` |
+| **Status** | `pending` |
+
 ## Traceability
 
 ### Acceptance criteria
@@ -760,7 +777,7 @@ parallel. Within stage 6, T-28 to T-31 run in parallel, and T-32 and T-33 run in
 | 15 — no value/PII/secret in logs, traces, errors | T-10, T-11, T-29, T-35 | `test_logging.py`, `test_metrics.py`, `test_errors.py`, `test_no_leaks.py` |
 | 16 — audit on every write, rejection, deletion | T-12, T-25, T-26, T-32, T-36 | `test_audit.py`, `test_required_telemetry.py` |
 | 17 — new domain by YAML alone | T-08, T-17, T-41 | `test_config_examples.py`, `test_eligibility.py` (second config) |
-| 18 — conformance against a built image | T-20, T-37, T-38 | conformance, run in CI against the reference image |
+| 18 — conformance against a built image | T-20, T-37, T-38, T-44 | conformance, run in CI against the reference image; `smoke_test.py` |
 
 ### Controls — where the evidence comes from
 
