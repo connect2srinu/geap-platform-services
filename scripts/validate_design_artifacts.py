@@ -153,33 +153,65 @@ def validate_folder(folder: Path, schema: dict, report: Report) -> None:
     # Controls: no undisclosed gap, and only recognised status values.
     controls = folder / "controls-check.md"
     if controls.is_file():
-        text = controls.read_text(encoding="utf-8")
-        fm, _ = parse_front_matter(controls, yaml)
-        declared = set(
-            re.findall(
-                r"\|\s*(Verified|Implemented, not verified|Gap|Not applicable|Exception approved)\s*\|",
-                text,
-            )
-        )
-        unknown = (
-            set(re.findall(r"\*\*Status:\*\*\s*([A-Za-z, ]+)", text)) - CONTROL_STATUSES
-        )
-        for u in sorted(unknown):
-            report.error(
-                f"{rel}/controls-check.md", f"unrecognised control status '{u.strip()}'"
-            )
-        if not unknown:
+        fm, body = parse_front_matter(controls, yaml)
+        problems = check_controls(body, approved=(fm or {}).get("status") == "approved")
+        for problem in problems:
+            report.error(f"{rel}/controls-check.md", problem)
+        if not problems:
             report.ok()
-        if "Gap" in declared and (fm or {}).get("status") == "approved":
-            if "Exception approved" not in text:
-                report.error(
-                    f"{rel}/controls-check.md",
-                    "approved with a 'Gap' status and no approved exception recorded",
+
+
+def check_controls(body: str, approved: bool) -> list[str]:
+    """Return the problems in a controls-check body.
+
+    Statuses are read from each control's own `### C-NN` section, never from the status legend or
+    the summary table: both always contain every status name, which is how an earlier version of
+    this check was satisfied by the template text alone.
+    """
+    problems: list[str] = []
+    for control, status in control_statuses(body).items():
+        if status is None:
+            problems.append(f"{control}: no status recorded")
+        elif status not in CONTROL_STATUSES:
+            problems.append(f"{control}: unrecognised control status '{status}'")
+        elif approved and status in ("Gap", "Exception approved"):
+            if control not in approved_exceptions(body):
+                problems.append(
+                    f"{control}: approved with status '{status}' and no approved exception "
+                    "(approver, date and expiry) recorded"
                 )
-            else:
-                report.ok()
-        else:
-            report.ok()
+    return problems
+
+
+def control_statuses(body: str) -> dict[str, str | None]:
+    sections = re.finditer(r"^### (C-\d{2})\b.*?(?=^#{1,3} |\Z)", body, re.M | re.S)
+    statuses: dict[str, str | None] = {}
+    for section in sections:
+        row = re.search(
+            r"^\|\s*\*\*Status\*\*\s*\|\s*([^|]*?)\s*\|", section.group(0), re.M
+        )
+        statuses[section.group(1)] = (row.group(1) or None) if row else None
+    return statuses
+
+
+def approved_exceptions(body: str) -> set[str]:
+    """Controls with a complete row in the `## Approved exceptions` table.
+
+    Columns: Control | Exception | Compensating control | Approver | Date | Expires. A row counts
+    only when approver, date and expiry are all filled -- an exception with no owner or end date
+    is not an exception.
+    """
+    section = re.search(
+        r"^## Approved exceptions[ \t]*$(.*?)(?=^#{1,2} |\Z)", body, re.M | re.S
+    )
+    if not section:
+        return set()
+    found: set[str] = set()
+    for row in re.findall(r"^\|(.*)\|[ \t]*$", section.group(1), re.M):
+        cells = [c.strip() for c in row.split("|")]
+        if len(cells) >= 6 and re.fullmatch(r"C-\d{2}", cells[0]) and all(cells[3:6]):
+            found.add(cells[0])
+    return found
 
 
 def main(argv: list[str]) -> int:
