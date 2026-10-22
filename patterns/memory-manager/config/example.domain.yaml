@@ -1,28 +1,68 @@
-# Safe example configuration. Neutral placeholders only -- never a real enterprise
-# identifier, never a secret value.
+# Safe example. Neutral placeholders only — no real identifiers, no secret values.
+# Validated against config.schema.json at startup; the service refuses to start if invalid.
 
 domain:
   name: example-domain
 
-rbac:
-  roles:
-    - id: writer-agent
-      permissions: [read, write, correct, list]
-    - id: reader-agent
-      # A read-only role can never be granted write. Enforced, not conventional.
-      permissions: [read, list]
+# ONE period for the whole domain. Per-topic retention is not possible — TTL is a
+# bank-level setting and each domain has one bank. Applied by platform Terraform.
+retention:
+  days: 365
 
-privacy:
-  sensitiveAttributes:
-    - example_sensitive_attribute
-  restrictedAttributes:
-    - example_restricted_attribute
-  categories:
-    - example-category
+topics:
+  - id: preferred_brands
+    classification: non-sensitive
+    enabled: true
+    allowInferred: false
+    fields:
+      - { name: brand, valueType: string, maxLength: 128 }
 
-extensions: {}
-  # Omit an entry to use the platform default. Security-relevant defaults fail closed.
-  # pii-classifier: domain_extensions.pii.Classifier
+  - id: preferred_cuisines
+    classification: non-sensitive
+    enabled: true
+    allowInferred: false
+    fields:
+      - { name: cuisine, valueType: string, maxLength: 128 }
+
+  # Declared so the service can reject them by name with an accurate reason code.
+  # Sensitive and restricted topics are never eligible for storage, whatever
+  # a caller is granted.
+  - id: health_conditions
+    classification: sensitive
+    enabled: false
+
+  - id: prescription_details
+    classification: restricted
+    enabled: false
+
+callers:
+  - id: writer-agent
+    subject: writer-agent@example-project.iam.gserviceaccount.example
+    operations: [remember, recall]
+    topics: [preferred_brands, preferred_cuisines]
+    maxRequestsPerMinute: 60
+
+  # A caller with only 'recall' can never write, however the request is shaped.
+  - id: reader-agent
+    subject: reader-agent@example-project.iam.gserviceaccount.example
+    operations: [recall]
+    topics: [preferred_brands]
+    maxRequestsPerMinute: 120
+
+identity:
+  issuer: https://issuer.example-domain.invalid
+  jwksUri: https://issuer.example-domain.invalid/.well-known/jwks.json
+  audience: memory-manager
+
+extensions:
+  # Omit an entry to use the platform default. The two required extension points
+  # default to DENY-ALL, so an unconfigured deployment stores nothing — by design.
+  piiClassifier: extensions.pii.DomainClassifier
+  policyProvider: extensions.policy.DomainPolicyProvider
+
+quota:
+  # This domain's share of the SHARED project quota, agreed with the platform team.
+  maxWritesPerMinute: 100
 
 observability:
   logLevel: INFO

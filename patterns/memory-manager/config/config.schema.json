@@ -1,9 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geap.example/patterns/memory-manager/config.schema.json",
   "title": "Memory Manager domain configuration",
-  "description": "What a consuming domain may configure. Keys that could disable a mandatory control deliberately do not exist -- see standards/configuration.md.",
+  "description": "What a consuming domain may configure. Validated at startup; the service refuses to start on invalid configuration rather than degrading to a default. Keys that could switch off a security rule deliberately do not exist.",
   "type": "object",
-  "required": ["domain", "observability"],
+  "required": ["domain", "topics", "callers", "observability"],
   "additionalProperties": false,
   "properties": {
     "domain": {
@@ -14,47 +15,124 @@
         "name": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{2,24}$",
-          "description": "Neutral domain identifier used as a resource prefix."
+          "description": "Neutral domain identifier, used as a resource prefix and as a metric label."
         }
       }
     },
-    "rbac": {
+
+    "retention": {
       "type": "object",
-      "description": "Domain-defined roles and bindings. Read-only roles can never write.",
+      "description": "ONE period for the whole domain. Per-topic retention is not possible: TTL is a bank-level setting and each domain has one bank (verified 2026-10-22). Applied by platform Terraform; declared here so the service can report what it believes is in force.",
+      "required": ["days"],
       "additionalProperties": false,
       "properties": {
-        "roles": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["id", "permissions"],
-            "additionalProperties": false,
-            "properties": {
-              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-              "permissions": {
-                "type": "array",
-                "items": { "enum": ["read", "write", "correct", "forget", "list"] }
+        "days": { "type": "integer", "minimum": 1, "maximum": 3650 }
+      }
+    },
+
+    "topics": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The domain's topic vocabulary. A topic absent from this list is unknown and is rejected.",
+      "items": {
+        "type": "object",
+        "required": ["id", "classification", "enabled"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,48}$" },
+          "classification": {
+            "enum": ["non-sensitive", "sensitive", "restricted"],
+            "description": "Only non-sensitive topics are eligible for storage. Sensitive and restricted are excluded — not a permissions question, the domain stores nothing in them."
+          },
+          "enabled": { "type": "boolean" },
+          "allowInferred": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether a fact with basis 'inferred' may be stored. Defaults to false, so an unsupported inference is rejected unless the domain opts in."
+          },
+          "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "valueType"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,48}$" },
+                "valueType": { "enum": ["string", "number", "boolean"] },
+                "maxLength": { "type": "integer", "minimum": 1, "maximum": 512 }
               }
             }
           }
         }
       }
     },
-    "privacy": {
-      "type": "object",
-      "description": "Domain vocabulary. The OBLIGATION to classify is platform; the vocabulary is domain.",
-      "additionalProperties": false,
-      "properties": {
-        "sensitiveAttributes": { "type": "array", "items": { "type": "string" } },
-        "restrictedAttributes": { "type": "array", "items": { "type": "string" } },
-        "categories": { "type": "array", "items": { "type": "string" } }
+
+    "callers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Registered agents and what each may do. A caller absent from this list is not registered and is refused.",
+      "items": {
+        "type": "object",
+        "required": ["id", "subject", "operations", "topics"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,48}$" },
+          "subject": {
+            "type": "string",
+            "description": "The service account or token subject this caller presents."
+          },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "enum": ["remember", "recall"] },
+            "description": "A caller granted only 'recall' can never write."
+          },
+          "topics": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "Topic ids this caller may use. Must exist in 'topics'."
+          },
+          "maxRequestsPerMinute": { "type": "integer", "minimum": 1, "maximum": 10000 }
+        }
       }
     },
+
+    "identity": {
+      "type": "object",
+      "description": "How an end-user token is verified. The subject resolves to a scope server-side.",
+      "required": ["issuer", "jwksUri", "audience"],
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": "string", "format": "uri" },
+        "jwksUri": { "type": "string", "format": "uri" },
+        "audience": { "type": "string" }
+      }
+    },
+
     "extensions": {
       "type": "object",
-      "description": "Module paths for the domain's extension implementations. Omitted entries use the platform default.",
-      "additionalProperties": { "type": "string" }
+      "description": "Module paths for the domain's implementations. An omitted entry uses the platform default; security-relevant defaults fail closed, so omitting pii-classifier or policy-provider means nothing is stored.",
+      "additionalProperties": false,
+      "properties": {
+        "piiClassifier": { "type": "string" },
+        "policyProvider": { "type": "string" },
+        "topicProvider": { "type": "string" },
+        "entityResolver": { "type": "string" }
+      }
     },
+
+    "quota": {
+      "type": "object",
+      "description": "This domain's allocated share of the SHARED project Memory Bank quota, divided across instances at startup. The service refuses to start without it.",
+      "required": ["maxWritesPerMinute"],
+      "additionalProperties": false,
+      "properties": {
+        "maxWritesPerMinute": { "type": "integer", "minimum": 1, "maximum": 10000 }
+      }
+    },
+
     "observability": {
       "type": "object",
       "required": ["logLevel"],
@@ -63,7 +141,7 @@
         "logLevel": {
           "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
           "default": "INFO",
-          "description": "DEBUG never enables payload logging; the prohibited-field list is absolute."
+          "description": "DEBUG does not enable payload logging. The prohibited-field list in security rule S-4 is absolute at every level."
         }
       }
     }
