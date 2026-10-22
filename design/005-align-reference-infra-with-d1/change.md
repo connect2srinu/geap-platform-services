@@ -53,6 +53,13 @@ worker member and keeps the API's. The 001 design and DEC-2 route audit through 
 instead, so this binding may go too. Removing an audit path is a control question, though, so it
 belongs to 001's T-39/T-40, not here.
 
+> **Flag for 001 (T-39/T-40).** 001's design routes audit events through Cloud Logging, to a
+> dedicated log name with a platform-owned log sink. DEC-2 chose the Cloud Logging API. So once
+> 001 is implemented, `audit_publish` may grant publish on a topic **nothing publishes to**. Its
+> presence would then look like an audit path that doesn't exist. Whether to remove it, or
+> re-point the sink at it, is decided in T-39/T-40. Removing an audit path needs a C-07 controls
+> recheck (`design-check-controls --recheck`), not a cleanup commit.
+
 **Not in this change: `pattern.yaml`.** The requester asked for the manifest corrections the 001
 design lists (`design.md` lines 473–478) to be folded in here. They are not: changing
 `pattern.yaml` fails the first light-track statement above, and the rules don't let this change take
@@ -67,8 +74,9 @@ contract:
 - `scripts/smoke_test.py` asserts `202`.
 - `docs/runbook.md` covers dead-letter and queue-age triage.
 
-That is tool-API documentation, and it should be rewritten against 001's OpenAPI contract (T-03)
-once that contract exists. Rewriting it now would mean inventing the contract.
+That is tool-API documentation, and agent teams code against `agent-api.md`. It is rewritten
+against 001's OpenAPI contract by **001 task T-44**, which depends on T-03 so it cannot run
+before the contract exists, or be forgotten. Rewriting it now would mean inventing the contract.
 
 **Forward requirement for v0.2.0:** when the asynchronous queue returns, it must be created with a
 customer-managed key from day one (control C-20, proposed in 006). This is recorded in the
@@ -100,7 +108,8 @@ resolves in CI. The CI run is the authoritative result.
 ## Approval
 
 **Gate A** — approved in session on 2026-10-21 by the requester (connect2srinu), "in the reframed
-form": an alignment change on the light track. The manifest portion is held (see Approach). Restate
-this in the PR description. `status` stays `draft` here: only a human sets `approved`.
+form": an alignment change on the light track. The manifest portion is held (see Approach). The
+requester confirmed on 2026-10-21 that `pattern.yaml` stays in 001 T-41, that `audit_publish` is
+kept, and that the template drift goes to 001 as T-44. Restate this in the PR description. `status` stays `draft` here: only a human sets `approved`.
 
 Gate A inline (in the PR description) and Gate E (human review). Gate F for merge.
