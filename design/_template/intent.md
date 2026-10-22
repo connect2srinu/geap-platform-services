@@ -1,67 +1,36 @@
 ---
 artifact: intent
 feature: NNN-slug
-track: full
 status: draft
 ---
 
-# Intent — <feature title>
+# <title>
 
-> Stage 1. Approval at **Gate A** is required before design work begins, and before any remote
-> branch or pull request is created.
+## Why
 
-## Business objective
-
-What outcome is wanted, and for whom. One paragraph. Not a solution.
-
-## Requester and stakeholders
-
-| Role | Who |
-|---|---|
-| Requester | |
-| Platform lead | |
-| Affected domains | |
-| Affected agent teams | |
-
-## Reusable or domain-specific
-
-Is this a change to a reusable platform pattern, or something only one domain needs?
-If domain-specific, state why it belongs in this repository at all.
-
-| | |
-|---|---|
-| Classification | `reusable-pattern` / `pattern-enhancement` / `consumer-configuration` / `defect` / `security` / `contract-change` / `dependency` |
-| Patterns touched | |
-| Contracts touched | |
+The problem, in a paragraph. Not a solution.
 
 ## Scope
 
-What this change includes.
+What this includes.
 
-## Non-goals
+## Not in scope
 
-What it explicitly does not include. This section prevents scope creep later; be specific.
+What it explicitly excludes. This is what stops scope creep later — be specific.
 
-## Acceptance criteria
+## How we'll know it works
 
-Numbered, testable. Each one maps to at least one task and at least one test.
+Numbered, testable. Three to eight of them.
 
 1.
-2.
-
-## Constraints and dependencies
-
-Technical, organisational, timing. Include anything that must exist first.
 
 ## Open questions
 
-| ID | Question | Blocks | Who decides |
-|---|---|---|---|
-| Q1 | | | |
+| Question | Who decides |
+|---|---|
 
-Label claims `VERIFIED` / `PROPOSED` / `OPEN` / `ASSUMPTION`. Document assumptions; do not invent
-requirements to fill a gap.
+Label claims `VERIFIED` (observed), `ASSUMPTION` (recorded, not hidden) or `OPEN` (needs a decision).
 
 ## Approval
 
-Gate A. A human sets `status: approved` with `approved_by` and `approved_date` in the front matter.
+A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).

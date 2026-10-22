@@ -3,7 +3,8 @@
 Significant, **approved** decisions. Not every implementation choice — ADRs for everything make ADRs
 worthless.
 
-Written with [`design-record-decision`](../../.claude/skills/design-record-decision/SKILL.md).
+Significant decisions now live in the feature's `design.md`. Keep an ADR only for a decision that
+outlives one feature — a cloud topology, a delivery model, a stack choice.
 
 | ADR | Title | Status | Date |
 |---|---|---|---|

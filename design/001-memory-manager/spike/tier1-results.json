@@ -1,0 +1,128 @@
+{
+  "run": "85216c84",
+  "started": "2026-10-22T21:35:35+00:00",
+  "python": "3.12.3",
+  "sdk": "2.3.0",
+  "location": "us-central1",
+  "results": [
+    {
+      "check": "L1",
+      "status": "PASS",
+      "title": "GenerateMemories + direct_memories_source stores facts verbatim and still consolidates",
+      "evidence": [
+        "first write: actions ['CREATED', 'CREATED']",
+        "stored facts equal the input exactly (no extraction): True",
+        "conflicting second write (size medium -> large): actions {'projects/<project>/locations/us-central1/reasoningEngines/2989084207638118400/memories/4546392276326154240': 'UPDATED'}",
+        "consolidation acted on a first-write memory: True",
+        "consolidation is model-judged: FAIL here means not observed for this input"
+      ]
+    },
+    {
+      "check": "L2",
+      "status": "PASS",
+      "title": "The operation result lists affected memories by name with an action",
+      "evidence": [
+        "3 item(s) across both operations; malformed: []"
+      ]
+    },
+    {
+      "check": "L3",
+      "status": "PASS",
+      "title": "get immediately after the operation reflects the consolidated content",
+      "evidence": [
+        "read back 1 memory(ies) immediately",
+        "projects/<project>/locations/us-central1/reasoningEngines/2989084207638118400/memories/4546392276326154240: the operation result carries no fact; get succeeded"
+      ]
+    },
+    {
+      "check": "L6",
+      "status": "PASS",
+      "title": "The bracketed fact prefix survives consolidation",
+      "evidence": [
+        "2 memory(ies) in scope after consolidation"
+      ]
+    },
+    {
+      "check": "L5",
+      "status": "PASS",
+      "title": "An identical fact submitted twice consolidates into one memory",
+      "evidence": [
+        "first submission: actions ['CREATED']",
+        "second, identical submission: actions ['UPDATED']",
+        "memories in scope: 1; holding the fact: 1"
+      ]
+    },
+    {
+      "check": "L4",
+      "status": "PASS",
+      "title": "Revisions listable; rollback restores; rollback and delete leave no prohibited revision",
+      "evidence": [
+        "(a) revisions listed: 2; prohibited 1, clean 1",
+        "(b) rollback to 9180303075473096704: current fact restored: True",
+        "(c) prohibited revision after rollback: listed 0, retrievable 0 -> purged: True",
+        "(d) after delete: memory gone True; revisions still retrievable 0",
+        "decision map: (c) false -> DEC-3 delete-only; (d) false -> Stage 2 (C-05 (a))"
+      ]
+    },
+    {
+      "check": "L4",
+      "status": "INFO",
+      "title": "observation",
+      "evidence": [
+        "with disable_memory_revisions=True, revisions listed: 0"
+      ]
+    },
+    {
+      "check": "L8",
+      "status": "FAIL",
+      "title": "Scope-only retrieve returns every memory in the scope, across pages",
+      "evidence": [
+        "ClientError 400: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'List of found errors:\\t1.Field: direct_memories_source.direct_memories; Message: At most 5 direct memories are allowed.\\t', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.BadRequest', 'fieldViolations': [{"
+      ]
+    },
+    {
+      "check": "L9",
+      "status": "PASS",
+      "title": "Read-after-write bound for AC13",
+      "evidence": [
+        "trials 20; visible 20; not visible within 30 s: 0",
+        "p50 0.10 s; p95 0.14 s; max 0.15 s",
+        "bound used: max of 20 (p99 needs >= 100 trials) = 0.15 s against N = 10.0 s"
+      ]
+    },
+    {
+      "check": "L7",
+      "status": "INFO",
+      "title": "observation",
+      "evidence": [
+        "SDK 2.3.0: GenerateMemoriesConfig has no per-request ttl and Memories has no update method, so this check uses the bank-level ttl_config.granular_ttl_config"
+      ]
+    },
+    {
+      "check": "L7",
+      "status": "PASS",
+      "title": "A TTL applies to generated memories, survives consolidation, and expires them",
+      "evidence": [
+        "(a) expire_time on a generated memory: 2026-10-22 21:44:10.945524+00:00; matches 300 s: True",
+        "(b) after a consolidation update the TTL was reset",
+        "(c) memory gone within 120 s of expire_time: True"
+      ]
+    },
+    {
+      "check": "L7",
+      "status": "INFO",
+      "title": "observation",
+      "evidence": [
+        "create path (not the design's write path) with ttl: expire_time ['None']"
+      ]
+    },
+    {
+      "check": "L11",
+      "status": "UNAVAILABLE",
+      "title": "The bank accepts a customer-managed key and reports it as its encryption key",
+      "evidence": [
+        "no --kms-key"
+      ]
+    }
+  ]
+}

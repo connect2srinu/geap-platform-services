@@ -36,41 +36,33 @@ Two contracts follow from this, and both are versioned:
 ## Repository layout
 
 ```
-.claude/          Claude Code operating rules and the 13 project skills
-standards/        Normative engineering standards
-schemas/          Machine-readable schemas (pattern manifest, design artifacts)
-patterns/         The published patterns
-templates/        Scaffolds for new patterns, domain consumers, builds, infra, CI
-design/           Per-feature SDLC artifacts (intent, design, controls, tasks, closeout)
-docs/             Architecture, decisions (ADRs), onboarding, operations, releases
-scripts/          Validators — independently runnable, no Claude Code required
-.github/          Workflows, CODEOWNERS, PR template
+.claude/skills/   three skills: feature-start, feature-review, pattern-release
+standards/        engineering.md and security.md
+schemas/          pattern manifest + design artifact front matter
+patterns/         the published patterns
+templates/        scaffolds for consumers, builds, infra, CI
+design/           per-feature intent.md and design.md
+docs/             architecture, decisions, onboarding, operations, releases
+scripts/          validators — plain Python, no Claude Code needed
+.github/          workflows, CODEOWNERS, PR template
 ```
 
 ## Getting started
 
 - **Developers:** [docs/onboarding/developer-guide.md](docs/onboarding/developer-guide.md)
-- **The whole flow end to end:** [docs/onboarding/worked-example.md](docs/onboarding/worked-example.md)
-- **Every command, in order:** [docs/onboarding/cli-runbook.md](docs/onboarding/cli-runbook.md)
-- **Keystroke-by-keystroke, session by session:** [docs/onboarding/cli-session-script.md](docs/onboarding/cli-session-script.md)
-- **Working with Claude Code here:** [CLAUDE.md](CLAUDE.md) and
-  [docs/onboarding/skill-catalog.md](docs/onboarding/skill-catalog.md)
-- **Adopting a pattern (domain teams):** [docs/onboarding/domain-adoption.md](docs/onboarding/domain-adoption.md)
-- **Integrating an agent (agent teams):** [docs/onboarding/agent-team-guide.md](docs/onboarding/agent-team-guide.md)
-- **Repository administrators:** [docs/operations/repository-administration.md](docs/operations/repository-administration.md)
-  — six settings that must be configured by hand; they are the only real approval gates.
+- **Adopting a pattern:** [docs/onboarding/domain-adoption.md](docs/onboarding/domain-adoption.md)
+- **Working here with Claude Code:** [CLAUDE.md](CLAUDE.md)
 
 ## Development lifecycle
 
-Six stages with explicit human approval gates. No implementation begins before the design and task
-plan are approved.
+Two documents, two gates:
 
 ```
-Intent ──A──► Design ──B──► Controls ──C──► Build (plan ──D──► implement) ──► Review ──E──► Close ──F──► merge
+intent.md  → approved  →  design.md  → approved  →  implement → PR → approved → merge
 ```
 
-See [standards/architecture.md](standards/architecture.md) and
-[.claude/rules/sdlc-gates.md](.claude/rules/sdlc-gates.md).
+See [CLAUDE.md](CLAUDE.md).
+[CLAUDE.md](CLAUDE.md).
 
 ## Validation
 

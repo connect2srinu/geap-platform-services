@@ -1,124 +1,94 @@
 # Developer guide
 
-## First hour
-
-1. Read [`CLAUDE.md`](../../CLAUDE.md) — the operating rules.
-2. Skim [`standards/architecture.md`](../../standards/architecture.md) — what this repository is and
-   is not.
-3. Read [`standards/pattern-contract.md`](../../standards/pattern-contract.md), especially *The
-   limits of enforcement*. It is the most important section in the repository and the easiest to get
-   wrong.
-4. Skim the [skill catalog](skill-catalog.md).
-5. Read the [worked example](worked-example.md) — one pass through the whole flow, from an empty
-   design folder to a second domain in production. It is the fastest way to see how the gates,
-   the release track and domain adoption fit together.
-6. Keep the [CLI runbook](cli-runbook.md) open the first time you run the flow — it is every
-   command in order, including the one-time setup this repository still needs.
-
 ## Setup
 
 ```bash
 make deps
 ```
 
-> On Debian, Ubuntu and WSL the system Python is **externally managed** (PEP 668) and refuses a
-> bare `pip install`. `make deps` creates a project `.venv` and installs into it — do not pass
-> `--break-system-packages`.
-
 ```bash
 make verify
 ```
 
-`make verify` reports `unavailable` rather than silently skipping when a tool is absent. That is
-deliberate — an unavailable check is not a pass.
+`make deps` creates a project `.venv` on Python 3.12 — on Debian, Ubuntu and WSL the system Python is
+externally managed (PEP 668) and a bare `pip install` fails. Never use `--break-system-packages`.
 
-`make deps` installs `ruff`, `mypy` and `pytest` into the same `.venv`, so `make lint` and
-`make test` run rather than reporting `unavailable`. For ad-hoc commands:
+`make verify` reports `unavailable` rather than silently skipping when a tool is missing. **Unavailable
+is not a pass** — treat it as a blind spot.
 
-```bash
-source .venv/bin/activate
-```
+## The process
 
-## The mental model
-
-This repository **publishes patterns**. It is not a service. Three stakeholders:
-
-- **Platform team** (you) — publishes patterns, contracts, conformance suites, and the platform-owned
-  infrastructure that is the one hard control.
-- **Domain owners** — adopt, own and customize the code; build their own image; deploy and operate.
-- **Agent teams** — call a domain's deployed service through the tool API.
-
-Two contracts, both versioned: platform→domain (the pattern contract) and domain→agent team (the tool
-API). **The tool API is identical across every domain** — that is what makes agents portable, and it is
-why `patterns/*/contracts/` has the strictest review ownership here.
-
-## Daily workflow
+Two documents, two gates. [CLAUDE.md](../../CLAUDE.md) has the rules; this is the mechanics.
 
 ```bash
-/sdlc-status
+claude
 ```
 
-Then the skill for the current stage. Do not improvise a process — the skills exist so that the
-process is the same for everyone.
+```
+/feature-start
+```
 
-**Never write implementation code before Gates B and D.** This is the rule most likely to be broken
-under time pressure and most expensive when it is.
+It writes `design/NNN-slug/intent.md` and stops. You read it and set the front matter yourself:
 
-## Feature ownership and parallel work
+```yaml
+status: approved
+approved_by: <your name>
+approved_date: 2026-10-22
+```
 
-- **One design folder, one branch, one PR, one owner.** `design/NNN-slug` for all three.
-- Allocate `NNN` by taking the next free integer; claim it by pushing the branch. If two people
-  collide, the later branch renumbers.
-- **High-contention files** — `standards/**`, `schemas/**`, `.claude/**`, `CLAUDE.md` — get their own
-  small PR, merged first. Do not bundle a standards change into a feature.
-- `tasks.md` declares the **files each task owns**. Two tasks never own the same file.
+Edit it by hand. That step's whole value is that a person read the document — a scripted approval is
+not an approval.
 
-### Worktrees
-
-For concurrent features, so the branch name matches the directory:
+Then it writes `design.md` and stops again. Approve the same way. **Then** implementation starts.
 
 ```bash
-git worktree add ../geap-platform-services-002 design/002-some-feature
+git checkout -b design/NNN-slug && git push -u origin design/NNN-slug
+gh pr create --draft --title "NNN: <title>" --body "Design: design/NNN-slug/"
 ```
 
-```bash
-git worktree remove ../geap-platform-services-002
+When the work is done:
+
+```
+/feature-review
 ```
 
-### Multiple AI agents
+Then a human approves the PR and merges.
 
-- Bounded task from `tasks.md`, with its declared file ownership.
-- Never two agents editing one file.
-- An agent needing a file outside its task **stops and reports** rather than widening its scope.
-- Only two specializations are justified today: an **independent reviewer** context for Stage 5 (a
-  reviewer that did not write the code finds more), and a **read-only explorer** for codebase
-  questions. Resist adding more without evidence that they help.
+## Branching
 
-## Conflict resolution
+**One feature, one branch, one PR.** Every task lands on `design/NNN-slug`. Fix incidental defects in
+the same branch — don't open a second PR for a typo.
 
-| Conflict | Resolution |
-|---|---|
-| Two features need the same pattern file | Sequence them. The second rebases. |
-| Two features change the same contract | Stop. This needs a design decision, not a merge. |
-| A standards change conflicts with in-flight work | Standards merge first; features rebase. |
-| Design folder number collision | Later branch renumbers. |
+Split a fix out only when it touches `standards/`, `schemas/`, `.claude/`, `CLAUDE.md` or
+`.github/workflows/`, or when it is blocking CI for every open PR.
 
-## Before you push
+No worktrees unless you are genuinely building two features at once.
 
-```bash
-make verify
-```
-
-Report results honestly, including what was unavailable. See
-[`.claude/rules/evidence-and-claims.md`](../../.claude/rules/evidence-and-claims.md).
-
-## Things that will trip you up
+## Things that bite
 
 | Trap | Reality |
 |---|---|
-| "I'll just add the domain's rule here, it's small" | It belongs in configuration or an extension point. There is a test for this. |
+| "The validator passed, so the gate is approved" | It checks form, not approval. A well-formed draft passes. Read the status line it prints. |
 | "The tests should pass" | Run them. Paste the output. |
-| "The conformance suite is empty, so it passes" | Empty is **unavailable**. It is the single most likely way a pattern looks complete while being hollow. |
-| "CODEOWNERS requires review" | It assigns reviewers. Requiring review is a setting an administrator configures. |
-| "Separate memory banks give separate quota" | They do not. Quota is per project, per region, shared across every domain. |
-| "A mock test proves the integration works" | It proves your code calls the mock correctly. Nothing more. |
+| "`make verify` said unavailable, that's fine" | It means the check did not run. Not a pass. |
+| "I'll add the domain's rule here, it's small" | It belongs in configuration or an extension point. There is a test for this. |
+| "A mock test proves the integration works" | It proves your code calls the mock. Verify against the real service separately. |
+| "`git branch -d` says not merged" | Squash merge discards ancestry. Check the PR state, then `-D`. |
+| "`gh pr checks` exited 1" | It exits 1 if *any* check fails, required or not. |
+| "A PR won't merge, it's behind" | Branch protection is `strict` — bring it up to date with `git merge origin/main` first. |
+
+## Repository settings an admin must configure by hand
+
+These are not in the repository and do not travel with a clone:
+
+1. Branch protection on `main`: require a PR, require the status checks, no force-push, no deletion,
+   include administrators.
+2. Secret scanning, push protection, Dependabot.
+3. A `release` environment with required reviewers.
+4. Tag protection on `*/v*`.
+5. Real teams in `.github/CODEOWNERS` — `gh api repos/:owner/:repo/codeowners/errors` must return
+   an empty list.
+
+**On a single-maintainer repository, GitHub will not let you approve your own PR.** Set
+`required_approving_review_count: 0` and be honest that review is unenforced, rather than configuring
+a gate that blocks every merge.

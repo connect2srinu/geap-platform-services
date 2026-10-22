@@ -1,67 +1,53 @@
-# GEAP Platform Services — operating rules for Claude Code
+# GEAP Platform Services
 
-This repository **publishes reusable patterns**. It is not a deployed service. The platform team does
-not build or operate domain container images or runtimes. Domain teams adopt a versioned pattern, own
-and customize the code, and deploy it independently to Cloud Run in the platform-owned GCP project.
+This repository **publishes reusable patterns**. Domain teams adopt a pattern, own and customize the
+code, build their own image, and deploy it themselves to Cloud Run in the platform-owned GCP project.
+We do not operate their runtimes.
 
-Never hardcode a business domain's rules (Customer, Inventory, Manufacturing, Supply Chain) into
-reusable pattern code. Domain behaviour arrives through configuration and declared extension points.
+Never put a business domain's rules (Customer, Inventory, …) into reusable pattern code. Domain
+behaviour arrives through configuration and declared extension points.
 
-## Before you change anything
+## The process — two documents, two gates
 
-1. **Read the standards that apply.** Load only what the task touches:
+```
+design/NNN-slug/intent.md    what and why          → human approves
+design/NNN-slug/design.md    how                   → human approves
+                             → implement → PR      → human approves → merge
+```
 
-   | Task touches | Read |
-   |---|---|
-   | Architecture, layering, diagrams | `standards/architecture.md` |
-   | Any code | `standards/coding.md` |
-   | Auth, data classification, secrets, IAM | `standards/security.md` |
-   | Tests | `standards/testing.md` |
-   | Logs, metrics, traces, audit | `standards/observability.md` |
-   | Endpoints, contracts, versioning | `standards/api-design.md` |
-   | Config, extension points | `standards/configuration.md` |
-   | A pattern's manifest or contract | `standards/pattern-contract.md` |
-   | Versions, changelogs, publishing | `standards/release-management.md` |
+That is the whole process. There are no other artifacts.
 
-2. **Find the design folder.** Work belongs to one: `design/NNN-slug/`. If none applies, use the
-   `design-start-feature` skill. Do not invent a folder by hand.
-3. **Determine the stage and which gates are open.** Use the `sdlc-status` skill.
-4. **Never bypass a gate.** → @.claude/rules/sdlc-gates.md
-5. **Do not implement before Gate B (design) and Gate D (task plan) are approved.** Writing
-   application code without an approved design is the single most damaging thing you can do here.
+- **Do not write implementation code until `design.md` says `status: approved`.**
+- Only a human sets `status: approved`. Never infer approval from a commit message or from silence.
+- Fix incidental defects **in the same branch**. Don't create a second branch for a typo.
+- One feature, one branch, one PR: `design/NNN-slug` for all three.
 
-## While you work
+## The rules while you work
 
-6. **Follow the approved design and `tasks.md`.** One coherent task at a time. If implementation
-   reveals a material architecture change, stop and return to design review — do not improvise.
-7. **Preserve the platform/domain boundary.** → @.claude/rules/platform-vs-domain.md
-8. **Security and privacy are not negotiable.** Mandatory controls cannot be disabled by domain
-   configuration. Memory content and PII must never reach logs or traces.
-   → @.claude/rules/security-baseline.md
-9. **Tests and documentation change with the code**, in the same commit, not afterwards.
-10. **Record approved architecture decisions** with `design-record-decision`. Only approved ones, and
-    not every minor implementation detail.
-11. **Do not modify unrelated components.** No opportunistic refactoring. If you spot something,
-    report it instead of fixing it.
-12. **Preserve existing contracts** unless a change is approved. The tool API is identical across
-    domains by design — changing it breaks every agent team.
+1. **Read `standards/engineering.md` before writing code**, and `standards/security.md` before
+   anything touching auth, data, secrets or IAM.
+2. **Follow the approved design.** If something forces a real change to it, stop and say so — don't
+   improvise around it.
+3. **Verify provider assumptions with a throwaway script before designing around them.** Reading the
+   installed SDK beats reading the documentation. This has caught three contract-level defects.
+4. **Tests ship with the code**, in the same commit. A security rule is only real if a test fails
+   when you remove it.
+5. **Never claim a check passed without its output.** Report passed / failed / **unavailable**
+   separately — unavailable is not a pass.
+6. **Don't touch unrelated components.** Report what you notice instead of fixing it.
+7. **Ask before** merging, publishing, pushing an image, deleting anything, or `terraform apply`.
+   This repository applies no infrastructure.
 
-## Before you report
+## Skills
 
-13. **Run the available checks:** `make verify`, or the specific target for what you changed.
-14. **Never claim a test, scan, build or deployment succeeded without output proving it.**
-    → @.claude/rules/evidence-and-claims.md
-15. **Report passed, failed, skipped and unavailable separately.** "Unavailable" means the tool is not
-    installed or could not run — say so plainly rather than implying a pass.
+| Skill | Use |
+|---|---|
+| `feature-start` | Begin a feature — writes `intent.md`, then `design.md` after you approve the intent |
+| `feature-review` | Implementation done — checks it against the design, runs the checks, preps the PR |
+| `pattern-release` | Prepare a version for release. Never publishes. |
 
-## Approvals and dangerous actions
+## Validation
 
-16. **Ask for explicit confirmation before:** deleting anything, force-pushing, merging, publishing a
-    release, pushing an image, or running `terraform apply`. Skills must never do these silently.
-17. This repository **applies no infrastructure**. Terraform here is reference material, validated
-    with `init -backend=false` and `validate` only.
-
-## Prefer the project skills
-
-18. Thirteen skills cover the lifecycle. Use them instead of improvising a process.
-    → [docs/onboarding/skill-catalog.md](docs/onboarding/skill-catalog.md)
+```bash
+make verify
+```

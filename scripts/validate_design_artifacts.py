@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""Validate SDLC design artifacts.
+"""Validate design artifacts: two documents per feature, nothing else.
 
-Checks what a machine can check: that artifacts exist, carry well-formed front matter, use the
-required evidence vocabulary, are internally consistent, and do not claim approval improperly.
+Checks what a machine can check — the documents exist, their front matter is well formed, the
+design is not approved before the intent, and nobody has recorded an AI as the approver.
 
-It CANNOT check that a human actually read or approved anything. That is GitHub required reviews
-and CODEOWNERS -- see docs/operations/repository-administration.md.
+It CANNOT check that a human read anything. That is the pull-request review.
 
-Usage:
     python3 scripts/validate_design_artifacts.py [design/NNN-slug ...]
-
-With no arguments, validates every design folder.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -25,215 +22,121 @@ from _common import REPO_ROOT, Report, parse_front_matter, require_deps  # noqa:
 yaml, jsonschema = require_deps()
 
 SCHEMA_PATH = REPO_ROOT / "schemas" / "design-artifacts.schema.json"
-FULL_TRACK = ["intent.md", "design.md", "controls-check.md", "tasks.md"]
-EVIDENCE_LABELS = {"VERIFIED", "PROPOSED", "OPEN", "ASSUMPTION"}
+ORDER = ["intent.md", "design.md"]
+LABELS = {"VERIFIED", "ASSUMPTION", "OPEN"}
 AI_APPROVERS = re.compile(
     r"\b(claude|gpt|copilot|codex|gemini|ai agent|assistant)\b", re.I
 )
-APPROVAL_FIELDS = ("approved_by", "approved_date")
-CONTROL_STATUSES = {
-    "Verified",
-    "Implemented, not verified",
-    "Gap",
-    "Not applicable",
-    "Exception approved",
-}
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def folder_track(folder: Path) -> str:
-    return "light" if (folder / "change.md").is_file() else "full"
+def _rel(folder: Path) -> str:
+    """Display path, tolerating a folder outside the repository (tests use tmp dirs)."""
+    try:
+        return str(folder.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(folder)
 
 
 def validate_folder(folder: Path, schema: dict, report: Report) -> None:
-    rel = folder.relative_to(REPO_ROOT)
+    rel = _rel(folder)
+
     if not re.fullmatch(r"[0-9]{3}-[a-z][a-z0-9-]*", folder.name):
-        report.error(
-            str(rel), "folder name must match NNN-slug (lowercase, kebab-case)"
-        )
+        report.error(str(rel), "folder name must be NNN-slug, lowercase kebab-case")
         return
     report.ok()
 
-    track = folder_track(folder)
-    expected = ["change.md"] if track == "light" else FULL_TRACK
-
     present = [p.name for p in folder.iterdir() if p.is_file() and p.suffix == ".md"]
-    if not present:
-        report.error(str(rel), "contains no Markdown artifacts")
-        return
+    extra = sorted(set(present) - set(ORDER))
+    if extra:
+        report.warn(
+            str(rel),
+            f"not validated (only intent.md and design.md are): {', '.join(extra)}",
+        )
 
-    # Required artifacts for the track. intent.md alone is a legitimate in-progress state.
-    if track == "full" and "intent.md" not in present:
-        report.error(str(rel), "full track requires intent.md")
-    else:
-        report.ok()
+    if "intent.md" not in present:
+        report.error(str(rel), "intent.md is required")
+        return
+    report.ok()
 
     statuses: dict[str, str] = {}
 
-    for name in present:
-        path = folder / name
-        artifact_rel = f"{rel}/{name}"
+    for name in ORDER:
+        if name not in present:
+            continue
+        path, where = folder / name, f"{rel}/{name}"
         fm, body = parse_front_matter(path, yaml)
 
-        if name not in expected and name not in FULL_TRACK + [
-            "change.md",
-            "closeout.md",
-        ]:
-            report.warn(
-                artifact_rel, "not a recognised artifact name; it will not be validated"
-            )
-            continue
-
         if fm is None:
-            report.error(artifact_rel, "missing or malformed YAML front matter")
+            report.error(where, "missing or malformed YAML front matter")
             continue
         report.ok()
 
         try:
-            # Without a format checker jsonschema treats `format` as an annotation, so
-            # `approved_date: 10/21/2026` passed `format: date`.
             jsonschema.validate(fm, schema, format_checker=jsonschema.FormatChecker())
             report.ok()
         except jsonschema.ValidationError as exc:
             loc = "/".join(str(p) for p in exc.absolute_path) or "(root)"
-            report.error(artifact_rel, f"front matter invalid at {loc}: {exc.message}")
+            report.error(where, f"front matter invalid at {loc}: {exc.message}")
             continue
 
         if fm.get("feature") != folder.name:
             report.error(
-                artifact_rel,
-                f"front matter feature '{fm.get('feature')}' does not match folder '{folder.name}'",
-            )
-        else:
-            report.ok()
-
-        if fm.get("track") != track:
-            report.error(
-                artifact_rel,
-                f"front matter track '{fm.get('track')}' but folder looks like '{track}' track",
+                where,
+                f"feature '{fm.get('feature')}' does not match folder '{folder.name}'",
             )
         else:
             report.ok()
 
         statuses[name] = fm.get("status", "draft")
 
-        # Light track: Gate A is recorded in the PR description and Gate E as a GitHub review
-        # (.claude/rules/sdlc-gates.md). change.md's status is not a gate record, so an approval
-        # here would be a second record that can disagree with the first.
-        if name == "change.md":
-            if fm.get("status") == "approved" or any(k in fm for k in APPROVAL_FIELDS):
-                report.error(
-                    artifact_rel,
-                    "change.md records no gate approval: on the light track Gate A is in the PR "
-                    "description and Gate E is a GitHub review (.claude/rules/sdlc-gates.md); "
-                    "do not set status 'approved', approved_by or approved_date here",
-                )
-            else:
-                report.ok()
-
         approver = str(fm.get("approved_by", ""))
         if approver and AI_APPROVERS.search(approver):
             report.error(
-                artifact_rel,
-                f"approved_by '{approver}' looks like an AI agent; a human must approve a gate",
+                where, f"approved_by '{approver}' is an AI; a human must approve"
             )
         else:
             report.ok()
 
-        if body.strip().count("TODO") and fm.get("status") == "approved":
-            report.error(artifact_rel, "marked approved but still contains TODO")
+        date = str(fm.get("approved_date", ""))
+        if date and not ISO_DATE.match(date):
+            report.error(where, f"approved_date '{date}' must be ISO 8601 (YYYY-MM-DD)")
         else:
             report.ok()
 
-        used = {m for m in re.findall(r"\b[A-Z]{4,10}\b", body) if m in EVIDENCE_LABELS}
-        if name in ("design.md", "intent.md", "change.md") and not used:
-            report.warn(
-                artifact_rel,
-                "uses none of VERIFIED/PROPOSED/OPEN/ASSUMPTION "
-                "(.claude/rules/evidence-and-claims.md)",
-            )
-
-    # Gate ordering: a later artifact cannot be approved before an earlier one.
-    order = [a for a in FULL_TRACK if a in statuses]
-    for i, name in enumerate(order):
-        if statuses[name] != "approved":
-            continue
-        for earlier in order[:i]:
-            if statuses[earlier] != "approved":
-                report.error(
-                    f"{rel}/{name}",
-                    f"approved while {earlier} is '{statuses[earlier]}' -- gates are ordered",
-                )
-                break
+        if fm.get("status") == "approved" and "TODO" in body:
+            report.error(where, "approved but still contains TODO")
         else:
             report.ok()
 
-    # Controls: no undisclosed gap, and only recognised status values.
-    controls = folder / "controls-check.md"
-    if controls.is_file():
-        fm, body = parse_front_matter(controls, yaml)
-        problems = check_controls(body, approved=(fm or {}).get("status") == "approved")
-        for problem in problems:
-            report.error(f"{rel}/controls-check.md", problem)
-        if not problems:
-            report.ok()
+        if not ({m for m in re.findall(r"\b[A-Z]{4,10}\b", body)} & LABELS):
+            report.warn(where, "uses none of VERIFIED / ASSUMPTION / OPEN")
 
-
-def check_controls(body: str, approved: bool) -> list[str]:
-    """Return the problems in a controls-check body.
-
-    Statuses are read from each control's own `### C-NN` section, never from the status legend or
-    the summary table: both always contain every status name, which is how an earlier version of
-    this check was satisfied by the template text alone.
-    """
-    problems: list[str] = []
-    for control, status in control_statuses(body).items():
-        if status is None:
-            problems.append(f"{control}: no status recorded")
-        elif status not in CONTROL_STATUSES:
-            problems.append(f"{control}: unrecognised control status '{status}'")
-        elif approved and status in ("Gap", "Exception approved"):
-            if control not in approved_exceptions(body):
-                problems.append(
-                    f"{control}: approved with status '{status}' and no approved exception "
-                    "(approver, date and expiry) recorded"
-                )
-    return problems
-
-
-def control_statuses(body: str) -> dict[str, str | None]:
-    sections = re.finditer(r"^### (C-\d{2})\b.*?(?=^#{1,3} |\Z)", body, re.M | re.S)
-    statuses: dict[str, str | None] = {}
-    for section in sections:
-        row = re.search(
-            r"^\|\s*\*\*Status\*\*\s*\|\s*([^|]*?)\s*\|", section.group(0), re.M
+    # The design cannot be approved before the intent it rests on.
+    if (
+        statuses.get("design.md") == "approved"
+        and statuses.get("intent.md") != "approved"
+    ):
+        report.error(
+            f"{rel}/design.md",
+            f"approved while intent.md is '{statuses.get('intent.md', 'missing')}'",
         )
-        statuses[section.group(1)] = (row.group(1) or None) if row else None
-    return statuses
+    else:
+        report.ok()
 
-
-def approved_exceptions(body: str) -> set[str]:
-    """Controls with a complete row in the `## Approved exceptions` table.
-
-    Columns: Control | Exception | Compensating control | Approver | Date | Expires. A row counts
-    only when approver, date and expiry are all filled -- an exception with no owner or end date
-    is not an exception.
-    """
-    section = re.search(
-        r"^## Approved exceptions[ \t]*$(.*?)(?=^#{1,2} |\Z)", body, re.M | re.S
+    # Report the gate state plainly, so a green run is never mistaken for an approval.
+    gate = next(
+        (n for n in ORDER if statuses.get(n, "missing") not in ("approved",)), None
     )
-    if not section:
-        return set()
-    found: set[str] = set()
-    for row in re.findall(r"^\|(.*)\|[ \t]*$", section.group(1), re.M):
-        cells = [c.strip() for c in row.split("|")]
-        if len(cells) >= 6 and re.fullmatch(r"C-\d{2}", cells[0]) and all(cells[3:6]):
-            found.add(cells[0])
-    return found
+    state = (
+        f"awaiting approval of {gate}"
+        if gate
+        else "both approved — implementation may proceed"
+    )
+    print(f"  {rel}: {state}")
 
 
 def main(argv: list[str]) -> int:
-    import json  # noqa: PLC0415
-
     if not SCHEMA_PATH.is_file():
         sys.exit(f"error: schema not found at {SCHEMA_PATH}")
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -250,15 +153,15 @@ def main(argv: list[str]) -> int:
             else []
         )
 
-    report = Report("Design artifact validation")
+    report = Report("Design artifacts")
     if not folders:
-        print("No design folders found; nothing to validate.")
+        print("No design folders; nothing to validate.")
         return 0
     for folder in folders:
-        if not folder.is_dir():
+        if folder.is_dir():
+            validate_folder(folder, schema, report)
+        else:
             report.error(str(folder), "not a directory")
-            continue
-        validate_folder(folder, schema, report)
     return report.finish()
 
 
