@@ -56,23 +56,23 @@ check-boundary: ## Check platform/domain boundary and layering rules
 check-release: ## Check a release-track change touches metadata only (BASE=origin/main)
 	@$(PYTHON) scripts/check_release_commit.py --base $${BASE:-origin/main}
 
+# Runs the same two checks as the Python CI lint job, so a local pass means a CI pass.
 lint: ## Lint Python (reports unavailable if ruff is absent)
-	@if [ -x $(VENV)/bin/ruff ]; then \
-		$(VENV)/bin/ruff check patterns scripts templates; \
-	elif command -v ruff >/dev/null 2>&1; then \
-		ruff check patterns scripts templates; \
-	else \
-		echo "unavailable: ruff is not installed (run 'make deps') — NOT a pass"; \
-	fi
+	@if [ -x $(VENV)/bin/ruff ]; then ruff=$(VENV)/bin/ruff; \
+	elif command -v ruff >/dev/null 2>&1; then ruff=ruff; \
+	else echo "unavailable: ruff is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	$$ruff check patterns scripts templates && $$ruff format --check patterns scripts templates
 
+# pytest exits 5 when it collects nothing: skipped, not passed. Any other failure must fail.
 test: ## Run platform unit tests (reports unavailable if pytest is absent)
-	@if [ -x $(VENV)/bin/pytest ]; then \
-		$(VENV)/bin/pytest -q patterns/*/tests tests 2>/dev/null || echo "no tests collected yet"; \
-	elif command -v pytest >/dev/null 2>&1; then \
-		pytest -q patterns/*/tests tests 2>/dev/null || echo "no tests collected yet"; \
-	else \
-		echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; \
-	fi
+	@if [ -x $(VENV)/bin/pytest ]; then pytest=$(VENV)/bin/pytest; \
+	elif command -v pytest >/dev/null 2>&1; then pytest=pytest; \
+	else echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	dirs=""; for d in patterns/*/tests tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
+	if [ -z "$$dirs" ]; then echo "No test directories present yet — skipped, not passed."; exit 0; fi; \
+	rc=0; $$pytest -q $$dirs || rc=$$?; \
+	if [ $$rc -eq 5 ]; then echo "No tests collected yet — skipped, not passed."; exit 0; fi; \
+	exit $$rc
 
 terraform-validate: ## Validate Terraform (no backend, no apply)
 	@if command -v terraform >/dev/null 2>&1; then \
