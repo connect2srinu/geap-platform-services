@@ -4,7 +4,7 @@ feature: 001-memory-manager
 track: full
 status: approved
 approved_by: Srinivasa reddy
-approved_date: 10/21/2026
+approved_date: 2026-10-21
 related_adrs: [ADR-0001, ADR-0003]
 patterns_touched: [memory-manager]
 ---
