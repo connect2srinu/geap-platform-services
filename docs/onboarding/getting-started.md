@@ -4,7 +4,7 @@ From a new laptop to a passing `make verify` and the service answering on `local
 macOS; the Linux differences are noted where they matter.
 
 > **How this was checked.** The clone, `make deps`, `make verify` and the local run in step 6 were run
-> on Linux on 2026-10-23: `351 passed`, every validator `PASSED`. The macOS install commands are the
+> on Linux on 2026-10-23: `388 passed`, every validator `PASSED`. The macOS install commands are the
 > standard Homebrew ones and **have not yet been run on a Mac**. If a step differs there, fix this
 > page in the same PR.
 
@@ -64,12 +64,12 @@ make verify
 A healthy run ends like this:
 
 ```
-PASSED  39 checks, 0 warning(s)      ← design documents
+PASSED  54 checks, 0 warning(s)      ← design documents
 PASSED  32 checks, 0 warning(s)      ← pattern manifest
 PASSED  4 checks, 0 warning(s)       ← platform/domain boundary
 All checks passed!                   ← ruff
-Success: no issues found in 27 source files   ← mypy
-351 passed                           ← unit + conformance tests
+Success: no issues found in 28 source files   ← mypy
+388 passed                           ← unit + conformance tests
 ```
 
 The counts grow as the repository does. What matters is **no `FAILED` and no `unavailable`**.
