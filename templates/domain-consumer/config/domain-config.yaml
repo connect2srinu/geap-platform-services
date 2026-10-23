@@ -1,31 +1,78 @@
-# Domain configuration. Validated against the pattern's config schema at startup;
-# the service REFUSES TO START on invalid configuration rather than defaulting.
+# Domain configuration. Validated against the pattern's config schema AT STARTUP; the service
+# refuses to start on invalid configuration rather than defaulting. Never a default that weakens
+# a security control.
 #
-# Neutral placeholders only. No real identifiers. No secret values -- secrets are
-# referenced by name and resolved from Secret Manager at runtime.
+# Replace every placeholder. Neutral identifiers only — no real company, product, project or
+# service-account names. No secret VALUES: secrets are named here and resolved from Secret
+# Manager at runtime.
 
 domain:
-  name: <domain-name>
+  # Lower-case, 3-25 characters. Used as a resource prefix and as a metric label.
+  name: example-domain
 
-# --- You own this section -----------------------------------------------------
-rbac:
-  roles:
-    - id: <writer-agent-role>
-      permissions: [read, write, correct, list]
-    - id: <reader-agent-role>
-      permissions: [read, list]
+retention:
+  # ONE period for the whole domain. Per-topic retention is not possible: TTL is a bank-level
+  # setting and each domain has one bank. Applied by platform Terraform; declared here so the
+  # service can report what it believes is in force.
+  days: 365
 
-privacy:
-  # The obligation to classify is the platform's; this vocabulary is yours.
-  sensitiveAttributes: []
-  restrictedAttributes: []
-  categories: []
+topics:
+  # Your vocabulary. A topic absent from this list is unknown and is rejected.
+  #
+  # Only `non-sensitive` topics are eligible for storage. Declaring a sensitive or restricted
+  # topic is still worth doing: a request against it is then refused with a truthful reason
+  # instead of TOPIC_UNKNOWN, which tells the calling agent something useful.
+  - id: example_preference
+    classification: non-sensitive
+    enabled: true
+    # Whether a fact whose basis is `inferred` may be stored. Defaults to false, so an
+    # unsupported inference is rejected unless you opt in per topic.
+    allowInferred: false
+    fields:
+      - name: preference
+        valueType: string
+        maxLength: 128
 
-extensions: {}
-  # Omit an entry to use the platform default.
-  # Security-relevant defaults FAIL CLOSED; loosening one needs review.
-  # pii-classifier: extensions.pii.Classifier
+  - id: example_sensitive_topic
+    classification: sensitive
+    enabled: false
+
+callers:
+  # Registered agents and what each may do. A caller absent from this list is refused.
+  - id: example-writer-agent
+    subject: writer-agent@example-domain.invalid
+    operations: [remember, recall]
+    topics: [example_preference]
+    maxRequestsPerMinute: 60
+
+  - id: example-reader-agent
+    subject: reader-agent@example-domain.invalid
+    # A caller granted only `recall` can never write, whatever it sends.
+    operations: [recall]
+    topics: [example_preference]
+    maxRequestsPerMinute: 60
+
+identity:
+  # How a forwarded end-user token is verified. The subject resolves to a memory scope
+  # server-side; a scope in a request body is refused.
+  issuer: https://issuer.example-domain.invalid
+  jwksUri: https://issuer.example-domain.invalid/.well-known/jwks.json
+  audience: example-domain-memory-manager
+
+extensions:
+  # Dotted paths to YOUR implementations. Omit an entry to use the platform default.
+  #
+  # The two security-relevant defaults FAIL CLOSED: omit piiClassifier or policyProvider and the
+  # service stores nothing at all. That is the design, not a bug — loosening it is a deliberate
+  # act that should get review on your side.
+  piiClassifier: extensions.sample_classifier.SampleClassifier
+  policyProvider: extensions.sample_policy.SamplePolicyProvider
+
+quota:
+  # Your agreed share of the SHARED project Memory Bank quota, divided across instances at
+  # startup. Not a limit you can raise unilaterally — agree it with the platform team.
+  maxWritesPerMinute: 60
 
 observability:
-  # DEBUG does not enable payload logging. The prohibited-field list is absolute.
+  # DEBUG does not enable payload logging. The prohibited-field list is absolute at every level.
   logLevel: INFO

@@ -252,3 +252,42 @@ def test_the_example_configuration_produces_a_service_that_serves() -> None:
         build_deployment(config(), environment="local"), environment="local"
     )
     assert TestClient(app).get("/healthz").status_code == 200
+
+
+# --- the container default ---------------------------------------------------------------
+
+
+def test_the_container_default_matches_the_filename_domains_are_told_to_create() -> (
+    None
+):
+    """A container built as documented must find its configuration with no CONFIG_PATH set.
+
+    The default was `/app/config/domain.yaml` while the adoption guide, the consumer template and
+    the Dockerfile's own COPY all said `domain-config.yaml`. Nothing in this repository could
+    notice: only a container ever reads the default.
+    """
+    from memory_manager.asgi import DEFAULT_CONFIG_PATH
+
+    repo = PATTERN.parent.parent
+    template_config = repo / "templates" / "domain-consumer" / "config"
+    shipped = {p.name for p in template_config.glob("*.yaml")}
+
+    assert Path(DEFAULT_CONFIG_PATH).name in shipped, (
+        f"the container default is {DEFAULT_CONFIG_PATH!r}, but the template ships "
+        f"{sorted(shipped)} — a container built as documented would not find its config"
+    )
+    # The Dockerfile must put it where the default looks.
+    dockerfile = (repo / "templates" / "domain-consumer" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    assert f"config/ {Path(DEFAULT_CONFIG_PATH).parent}/" in dockerfile.replace(
+        "--chown=app:app ", ""
+    ), "the Dockerfile does not copy config/ to the directory the default reads from"
+
+
+def test_a_missing_config_at_the_default_path_names_the_path() -> None:
+    """The failure a misconfigured container gets must say what it looked for."""
+    from memory_manager.asgi import DEFAULT_CONFIG_PATH
+
+    with pytest.raises(ConfigurationError, match="configuration not found"):
+        load_config(DEFAULT_CONFIG_PATH)

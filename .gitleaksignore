@@ -1,0 +1,20 @@
+# Reviewed and accepted gitleaks findings.
+#
+# One line per finding, as `<commit>:<path>:<rule>:<line>`. Each entry is a decision someone made
+# about a specific finding in a specific commit — never a path or a rule switched off wholesale,
+# because that is how a real leak goes unseen later.
+#
+# All of these are documentation examples: curl commands carrying an obviously fake bearer token
+# and a sample Idempotency-Key UUID. The examples themselves were changed in the commit before this one to
+# export the token into a shell variable instead, which is better practice regardless — a real
+# token does not belong in shell history. These entries exist only because the scan reads the
+# branch's history, where the earlier wording still stands.
+#
+# Before adding a line here, check the value is genuinely not a credential. An entry is cheap to
+# add and invisible afterwards.
+
+71b7cadab02239a90ad6abc46fc1f58569b7caec:templates/domain-consumer/docs/agent-api.md:generic-api-key:39
+7a16db5f640babbc6cb126d5dc66c8574d6b3f37:docs/onboarding/demo.md:curl-auth-header:242
+7a16db5f640babbc6cb126d5dc66c8574d6b3f37:docs/onboarding/demo.md:curl-auth-header:250
+7a16db5f640babbc6cb126d5dc66c8574d6b3f37:docs/onboarding/demo.md:curl-auth-header:258
+7a16db5f640babbc6cb126d5dc66c8574d6b3f37:docs/onboarding/demo.md:curl-auth-header:268

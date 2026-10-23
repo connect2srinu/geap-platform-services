@@ -202,57 +202,87 @@ topics:
   - { id: prescription_details, classification: restricted,   enabled: false }
 ```
 
-Implement `extensions/pii_classifier.py`. **Until you do, it denies everything and stores nothing** —
-that is the fail-closed default working, not a bug. Show the audience that.
+Write your own classifier and point `config/domain-config.yaml` at it. The template ships
+`extensions/sample_classifier.py` as a worked example — read it, do not ship it.
 
-## 4. Run it locally against a real Memory Bank
+**Leave the entry out and the service denies everything and stores nothing** — that is the
+fail-closed default working, not a bug. Show the audience that first, then add the classifier and
+show the same call succeeding.
+
+## 4. Run it locally
+
+Everything below is exercised by the `domain-rehearsal` CI job, so it works or the build is red.
+
+The local run uses the **fake** memory bank: it models consolidation, dedup and rollback as
+verified against the provider, and needs no credentials. For a run against a real bank, see
+`design/001-memory-manager/spike/verify_live.py` — that one costs quota.
 
 ```bash
 cp .env.example .env
 ```
 
-Set `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `MEMORY_BANK_ID`, `DOMAIN_NAME=customer`, and
-`AUTH_ENABLED=false` — **local only**; the service refuses to start with it set in a deployed
-environment.
+Fill in `ENVIRONMENT=local`, `MAX_INSTANCES=1`, `SUBJECT_HMAC_KEY=any-local-value`, and
+`CONFIG_PATH` pointing at your `config/domain-config.yaml`. `.env.example` carries names only;
+never commit a filled-in `.env`.
 
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS=~/.config/gcloud/application_default_credentials.json
+.venv/bin/python -m uvicorn memory_manager.asgi:create --factory --port 8080
 ```
+
+The factory form matters: a configuration error then arrives as a message naming the field,
+instead of an import traceback from inside uvicorn's loader.
+
+Three calls, in a second terminal. Both headers are required — `Authorization` carries the **end
+user's** token, which is what the memory scope is derived from, and `X-Agent-ID` is your
+registered caller.
+
+Keep the token in a variable rather than typing it into each command; a real one does not belong
+in your shell history. Locally the verifier treats the bearer value as the subject, so any string
+works:
 
 ```bash
-.venv/bin/python -m uvicorn pattern.api.main:app --reload --port 8080
+export END_USER_TOKEN=end-user-1
+export AGENT=example-writer-agent
 ```
 
-Three calls, in a second terminal. **Allowed:**
+**Allowed:**
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: demo' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"preferred_brands","value":"Horizon","fact":"The user prefers the organic brand Horizon."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Prefers the organic brand Horizon."}]}'
 ```
 
-**Blocked topic** — a no-op, not an error:
+`{"outcome":"written","stored":1,...,"reasonCode":"ACCEPTED"}`
+
+**Blocked topic** — a no-op, not an error. The request succeeded; the policy said no:
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: demo' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"medical_conditions","value":"diabetes","fact":"The user has diabetes."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_sensitive_topic","field":"detail","value":"x","fact":"Something sensitive."}]}'
 ```
+
+`{"outcome":"noop","stored":0,...,"reasonCode":"TOPIC_DISABLED"}`
 
 **The one that matters** — an allowed topic carrying prohibited content:
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: demo' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"preferred_brands","value":"Horizon","fact":"The user takes 20mg atorvastatin and prefers Horizon."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Takes 20mg of something and prefers Horizon."}]}'
 ```
 
-**Rejected.** The label does not grant passage. This is the single best thing to show.
+`{"outcome":"noop","stored":0,...,"reasonCode":"VALUE_PROHIBITED"}`
+
+**Refused.** The label does not grant passage. This is the single best thing to show.
 
 Read it back:
 
 ```bash
-curl -s "localhost:8080/v1/memories?topic=preferred_brands" -H 'X-Agent-ID: demo'
+curl -s "localhost:8080/v1/memories?topic=example_preference" -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN"
 ```
+
+Only the first fact comes back. `withheld: 0` — nothing was dropped on the way out.
 
 Prove nothing leaked:
 
 ```bash
-grep -riE "atorvastatin|diabetes|Horizon" <your log output> || echo "clean - no payload in logs"
+grep -riE "Horizon|20mg|$END_USER_TOKEN" server.log || echo "clean - no payload, no raw subject in logs"
 ```
 
 `Horizon` appearing is also a finding — it is memory content.

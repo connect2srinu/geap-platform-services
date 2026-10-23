@@ -50,6 +50,21 @@ jobs:
             echo "No pattern source present yet — skipped, not passed."
           fi
 
+  rehearsal:
+    name: Domain rehearsal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r scripts/requirements.txt
+      # Builds a domain project from the template, vendors the pattern, boots it and runs the
+      # conformance suite against it over HTTP. The onboarding materials rotted because nothing
+      # executed them; this executes them. Fake memory bank, so no credentials are needed.
+      - name: Rehearse adopting the pattern as a domain
+        run: python3 scripts/domain_rehearsal.py
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

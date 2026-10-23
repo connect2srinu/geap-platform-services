@@ -16,8 +16,11 @@ from fastapi import FastAPI
 from .api.main import create_app
 from .bootstrap import build_deployment, load_config
 
-#: Where the domain's configuration is mounted. The Dockerfile copies `config/` to /app/config.
-DEFAULT_CONFIG_PATH = "/app/config/domain.yaml"
+#: Where the domain's configuration is mounted. The Dockerfile copies `config/` to /app/config,
+#: and `domain-config.yaml` is the filename the adoption guide and the consumer template both
+#: tell a domain to create — so a correctly built container needs no CONFIG_PATH at all. It used
+#: to be `domain.yaml`, which matched nothing anyone was told to write.
+DEFAULT_CONFIG_PATH = "/app/config/domain-config.yaml"
 
 
 def create() -> FastAPI:
