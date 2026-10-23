@@ -78,6 +78,12 @@ raises becomes a denial plus a metric, never a bypass.
 
 ## 6. Conformance — the step that matters
 
+The suite needs the pattern's test dependencies, which a runtime install does not include:
+
+```bash
+.venv/bin/python -m pip install './vendor/pattern[dev]'
+```
+
 ```bash
 CONFORMANCE_BASE_URL=http://localhost:8080 \
 CONFORMANCE_AGENT_ID=<your-writer-agent> \

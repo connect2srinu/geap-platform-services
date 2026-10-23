@@ -44,9 +44,12 @@ CI, nothing outside your team will notice if you remove it — which is why it i
 2. **Fill in the configuration** — `config/domain-config.yaml`. Every required key is commented.
 3. **Implement your extensions** — `extensions/`. Security-relevant stubs start fail-closed; loosening
    one is a deliberate act that needs review.
-4. **Run conformance locally:**
+4. **Run conformance against your own build.** Install the test dependencies, start your
+   service, then point the suite at it — without `CONFORMANCE_BASE_URL` it tests the pattern's
+   reference implementation and tells you nothing about yours:
    ```bash
-   pytest -q vendor/pattern/conformance/
+   .venv/bin/python -m pip install './vendor/pattern[dev]'
+   CONFORMANCE_BASE_URL=http://localhost:8080 pytest -q vendor/pattern/conformance/
    ```
 5. **Provide your service account email to the platform team** so they can create the memory bank IAM
    binding:
