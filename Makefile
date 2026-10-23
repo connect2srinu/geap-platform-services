@@ -13,7 +13,7 @@ PYTHON := $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo p
 UV := $(shell command -v uv 2>/dev/null)
 PYTHON_VERSION := 3.12
 
-.PHONY: help deps verify validate-design validate-manifest check-boundary check-release lint test terraform-validate clean-venv
+.PHONY: help deps verify validate-design validate-manifest check-boundary lint test terraform-validate clean-venv
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -66,9 +66,6 @@ validate-manifest: ## Validate pattern manifests against the schema
 
 check-boundary: ## Check platform/domain boundary and layering rules
 	@$(PYTHON) scripts/check_platform_domain_boundary.py
-
-check-release: ## Check a release-track change touches metadata only (BASE=origin/main)
-	@$(PYTHON) scripts/check_release_commit.py --base $${BASE:-origin/main}
 
 # Runs the same two checks as the Python CI lint job, so a local pass means a CI pass.
 lint: ## Lint Python (reports unavailable if ruff is absent)

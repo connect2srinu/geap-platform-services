@@ -7,6 +7,6 @@ Once versions are published, each entry here states: the source version, the bre
 configuration and extension changes, the security changes, the required regression tests, and the
 rollback procedure.
 
-Plan an upgrade with [`pattern-upgrade`](../../../.claude/skills/pattern-upgrade/SKILL.md). A version
+Plan an upgrade by diffing the two tags' contracts and changelog. A version
 not listed in `spec.upgrade.from` has no supported path, and the skill will say so rather than
 improvise one.

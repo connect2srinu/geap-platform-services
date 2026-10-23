@@ -1,7 +1,6 @@
 # Domain adoption guide
 
-For a domain team adopting a published platform pattern. For the same ground as a narrative,
-including what the platform team does in parallel, see the [worked example](worked-example.md).
+For a domain team adopting a published platform pattern.
 
 ## The eleven steps
 
@@ -69,7 +68,7 @@ the contract.
 the build on a zero-test collection for exactly that reason.
 
 The platform team cannot see this run. If you remove the job, nothing outside your team notices. That
-is the model — see [the limits of enforcement](../../standards/pattern-contract.md).
+is the model — see [the limits of enforcement](../../standards/security.md).
 
 ## 7–8. Build and publish your image
 

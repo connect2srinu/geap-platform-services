@@ -4,36 +4,78 @@
   "title": "GEAP design artifact front matter",
   "description": "YAML front matter required on every SDLC design artifact. See .claude/rules/sdlc-gates.md.",
   "type": "object",
-  "required": ["artifact", "feature", "track", "status"],
+  "required": [
+    "artifact",
+    "feature",
+    "status"
+  ],
   "additionalProperties": true,
   "properties": {
     "artifact": {
-      "enum": ["intent", "design", "controls-check", "tasks", "closeout", "change"],
-      "description": "'change' is the single light-track artifact."
+      "enum": [
+        "intent",
+        "design"
+      ],
+      "description": "Two artifacts only. See CLAUDE.md."
     },
     "feature": {
       "type": "string",
       "pattern": "^[0-9]{3}-[a-z][a-z0-9-]*$",
       "description": "Matches the design folder and the branch name."
     },
-    "track": { "enum": ["full", "light"] },
     "status": {
-      "enum": ["draft", "in-review", "approved", "superseded"],
+      "enum": [
+        "draft",
+        "in-review",
+        "approved",
+        "superseded"
+      ],
       "description": "Only a human sets 'approved'. Claude must never self-approve."
     },
     "approved_by": {
       "type": "string",
       "description": "Required when status is approved. Must not be an AI agent."
     },
-    "approved_date": { "type": "string", "format": "date" },
-    "supersedes": { "type": "string" },
-    "related_adrs": { "type": "array", "items": { "type": "string", "pattern": "^ADR-[0-9]{4}$" } },
-    "patterns_touched": { "type": "array", "items": { "type": "string" } }
+    "approved_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601, YYYY-MM-DD."
+    },
+    "supersedes": {
+      "type": "string"
+    },
+    "related_adrs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^ADR-[0-9]{4}$"
+      }
+    },
+    "patterns_touched": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   },
   "allOf": [
     {
-      "if": { "properties": { "status": { "const": "approved" } }, "required": ["status"] },
-      "then": { "required": ["approved_by", "approved_date"] }
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "approved_by",
+          "approved_date"
+        ]
+      }
     }
   ]
 }

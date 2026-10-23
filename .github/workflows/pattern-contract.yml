@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r scripts/requirements.txt
+      - name: Validate design artifacts
+        run: python3 scripts/validate_design_artifacts.py
+
       - name: Validate pattern manifests
         run: python3 scripts/validate_pattern_manifest.py
       - name: Platform/domain boundary and layering

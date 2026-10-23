@@ -1,88 +1,67 @@
 ---
 artifact: design
 feature: NNN-slug
-track: full
 status: draft
 ---
 
-# Design — <feature title>
+# <title> — design
 
-> Stage 2. Requires an approved `intent.md`. Approval at **Gate B** is required before the
-> implementation plan.
+Requires an approved `intent.md`. **No implementation code before this is approved.**
 
-## Method
+## Provider assumptions verified
 
-What was read to produce this design — files, branches, documents — and when. Every `VERIFIED`
-claim must be traceable to something named here.
+What was checked against the installed SDK or a live service, and what came back. Read the SDK, not
+the documentation.
 
-## Summary
+| Assumption | Result |
+|---|---|
 
-The proposed approach in one paragraph.
+## Approach
 
-## Architecture
+The design. A Mermaid diagram if it helps.
 
-Mermaid diagram at C4 container level, labelled `CURRENT`, `TARGET` or `PROPOSED`.
-
-```mermaid
-flowchart TB
-```
-
-## Interfaces and contracts
-
-New or changed endpoints, request and response shapes, error codes, status codes. Reference the
-OpenAPI specification; do not duplicate it here.
+## Contract
 
 | Operation | Method | Path | Breaking? |
 |---|---|---|---|
 
-## Data contracts
-
-Stored shapes, scope keys, identifiers, retention.
+Error codes, status codes, idempotency.
 
 ## Configuration and extension points
 
-What a domain configures, and what it extends. Prefer configuration over source modification.
+What a domain sets, and what it plugs in. Every extension point has a default;
+security-relevant defaults fail closed.
 
-| Extension point | Interface | Required | Default | Failure mode |
-|---|---|---|---|---|
-
-## Platform vs. domain
-
-What is platform mechanism and what is domain policy, explicitly. List the controls that are
-**non-overridable** by domain configuration.
-
-## Alternatives considered
-
-| Option | Pros | Cons | Why not chosen |
+| Extension point | Required | Default | On failure |
 |---|---|---|---|
 
-## Failure handling and operations
+## Security
 
-Failure modes, retry and backoff, dead-lettering, idempotency, quota and throttling behaviour,
-degraded operation, recovery, replay. State what happens when the managed service is unavailable.
+Which of the eight rules in `standards/security.md` this touches, and the test covering each.
+One line per rule.
 
-## Backward compatibility and migration
+| Rule | How it's met | Test |
+|---|---|---|
 
-What breaks, who is affected, what the migration path is. If nothing breaks, say how that was
-determined.
+## Risks
 
-## Observability
+What could bite. Anything that cannot meet a security rule goes here with what compensates for it and
+an expiry date.
 
-Metrics, logs, traces and audit events this change adds or alters. Confirm no prohibited field is
-emitted.
+| Risk | Impact | What we do about it |
+|---|---|---|
 
-## Assumptions and open questions
+## Alternatives
 
-| ID | Item | Label | Resolution needed |
-|---|---|---|---|
+At least one, with why it wasn't chosen. "None considered" means it wasn't designed, it was defaulted
+into.
 
-## Proposed ADRs
+## Tasks
 
-Decisions significant enough to record, once approved.
+A checklist. Not a project plan.
 
-| ID | Decision |
-|---|---|
+- [ ]
 
 ## Approval
 
-Gate B. A human sets `status: approved`.
+A human sets `status: approved`.

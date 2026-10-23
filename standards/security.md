@@ -1,86 +1,39 @@
-# Security standards and control catalogue
+# Security — eight non-negotiables
 
-The baseline rules for day-to-day coding are in `.claude/rules/security-baseline.md`. This document is
-the **normative control catalogue**: `controls-check.md` at Gate C is generated from it.
+Every rule below has a **required test**. A rule without a passing test is not satisfied, whatever a
+document says. These cannot be switched off by domain configuration; a domain may make them stricter.
 
-## How a control is assessed
-
-Each control is assessed as:
-
-| Field | Meaning |
-|---|---|
-| **Requirement** | What must be true |
-| **Applicability** | Whether it applies to this change, and why |
-| **Implementation** | How it is satisfied — specific files, resources, configuration |
-| **Verification** | How it is proven — a named test, a scan, a manual procedure |
-| **Status** | `Verified` · `Implemented, not verified` · `Gap` · `Not applicable` · `Exception approved` |
-| **Evidence** | Command output, test name, scan report, or the exception record |
-
-**Rules that are not negotiable:**
-
-- A control is **never** marked `Verified` without evidence that would fail if the control were
-  removed. Code that looks correct is `Implemented, not verified`.
-- `Not applicable` requires a stated reason. "Not relevant" is not a reason.
-- `Gap` is an acceptable outcome. An undisclosed gap is not.
-- An `Exception approved` names an approver, a date, an expiry and a compensating control.
-- Controls are **re-assessed** when implementation changes the design or the security posture.
-
-## Non-overridable controls
-
-These cannot be weakened by domain configuration. A domain may make them stricter. If configuration
-could switch one off, the design is wrong. Declared per pattern in
-`spec.security.nonOverridableControls`.
-
-`C-01` authentication · `C-02` authorization fail-closed · `C-05` sensitive-data redaction before
-persistence · `C-06` logging restrictions · `C-07` audit completeness · `C-08` secret handling ·
-`C-11` least-privilege IAM · `C-16` domain isolation.
-
-## Catalogue
-
-### Identity and access
-
-| ID | Requirement | Verification |
+| # | Rule | Required test |
 |---|---|---|
-| **C-01** | Every caller is authenticated. Deployed environments require a Google-signed ID token mapped to exactly one registered caller. Development header shortcuts are **refused** outside local environments, not merely defaulted off. | Test: unauthenticated request → 401. Test: dev shortcut with production-like config → startup refusal. |
-| **C-02** | Authorization decisions fail closed. Unknown caller, unknown attribute, unmapped scope, or a classifier error → deny. | Test per deny path, each failing if the check is removed. |
-| **C-03** | RBAC is driven by versioned domain configuration, validated against a schema. Roles grant the narrowest capability that works; read-only can never write. | Test: read-only role attempting a write → 403. Schema validation test. |
-| **C-04** | Cross-caller and cross-domain access is explicit and recorded. Default is no access. | Test: caller A cannot read caller B's scope. |
+| **S-1** | Every caller is authenticated. Development shortcuts are **refused** outside a local environment, not merely defaulted off. | Unauthenticated request to 401. Dev shortcut with production-like config to startup refusal. |
+| **S-2** | Authorization denies by default. Unknown caller, unknown topic, unmapped scope, or a classifier error all deny. | One test per deny path, each failing if the check is removed. |
+| **S-3** | Data is classified before it is persisted. Anything unclassifiable is refused, not stored. | Unclassifiable value refused. Default classifier denies everything. |
+| **S-4** | Memory content, PII, secrets and auth headers never appear in logs, traces or error responses. | A test asserting the prohibited-field list against emitted records. |
+| **S-5** | Secrets are referenced by name and resolved from Secret Manager at runtime. Never in source, images, Terraform vars or logs. | Secret scanning in CI, plus a test forbidding credential-shaped literals. |
+| **S-6** | One service account per component, least privilege, **no primitive roles** (owner, editor, viewer). Memory Bank access goes to the service, never to an agent. | Terraform policy scan; a test asserting no primitive role in any module. |
+| **S-7** | Every write, denial and deletion emits an audit event with a correlation ID. | One test per event type. |
+| **S-8** | One domain cannot read or write another domain's scope. | Two domains; neither can reach the other's scope. |
 
-### Data protection
+## How to use this
 
-| ID | Requirement | Verification |
-|---|---|---|
-| **C-05** | Data is classified before persistence; sensitive and restricted values are redacted or refused per domain policy. The classifier is a domain extension; the **obligation** is platform and defaults to deny-all. | Test: unclassifiable value → refused, not stored. Test: default classifier denies. |
-| **C-06** | Memory content, PII, secrets and full auth headers never reach logs, traces or error responses. | Automated test asserting the prohibited-field list against emitted records. |
-| **C-07** | Every memory write, deletion, denial and policy decision emits an audit event with a correlation ID to the platform audit sink. | Test per event type. Sink configured in platform-owned Terraform. |
-| **C-08** | Secrets are referenced by name and resolved from Secret Manager at runtime. Never in source, images, Terraform variables, logs or committed `.env`. | Secret scanning in CI; a repository test forbidding credential-shaped literals. |
-| **C-09** | Data classification and retention are declared in configuration, and retention is enforced. | Test: expired value removed by the retention path. |
+In `design.md`, list which rules the change touches and which test covers each. One line per rule.
+That is the whole security review — there is no separate assessment document.
 
-### Platform and supply chain
+If a rule genuinely cannot be met, write it in `design.md` under **Risks** with: what is exposed, what
+compensates for it, and an expiry date. Get a second person to agree. Do not hide it.
 
-| ID | Requirement | Verification |
-|---|---|---|
-| **C-10** | Network exposure is minimal: internal ingress by default; public ingress requires an approved exception. | Terraform policy scan (`checkov`/`tfsec`). |
-| **C-11** | One service account per component, least privilege, no primitive roles. Memory Bank access is granted to the Memory Manager service account only — never to an agent — constrained by IAM Conditions on scope where supported. | Terraform policy scan; a test asserting no primitive role in any module. |
-| **C-12** | Containers run as a non-root user, from a pinned base image, with no build secrets in any layer. | Container scan in CI; Dockerfile lint. |
-| **C-13** | Dependencies are pinned, lockfiles committed, and scanned for known vulnerabilities on every PR. | Dependency scan job. |
-| **C-14** | Published release artifacts carry provenance attestation and checksums. | `actions/attest-build-provenance` and `SHA256SUMS` in `.github/workflows/release.yml`; verified by re-computing the checksums from the published tarball. |
-| **C-15** | Infrastructure is reviewed as code and policy-scanned. No manual console changes to platform-owned resources. | `terraform validate` + policy scan in CI. |
+## Fail closed
 
-### Isolation, reliability and cost
+Every authorization, classification and validation decision denies by default. An extension that
+raises is a denial plus a metric, never a bypass.
 
-| ID | Requirement | Verification |
-|---|---|---|
-| **C-16** | Domains are isolated. In a shared project, isolation is by per-domain service account and IAM Conditions on scope. One domain cannot read or write another's memory. | Test: two domains, neither can access the other's scope. IAM Conditions test against a live bank. |
-| **C-17** | Transient failures and provider throttling are handled with bounded retry, exponential backoff, dead-lettering and idempotency. Retry must not amplify load against a rate-limited dependency. | Test: injected 429 → parked, not hot-looped. Test: duplicate delivery → single effect. |
-| **C-18** | Required telemetry exists: tool invocations, queue depth, retry count, dead-letter depth, provider 429s, latency percentiles, per-domain quota attribution. | Test asserting metric emission; dashboard reference in the runbook. |
-| **C-19** | Shared-quota contention between domains is bounded by per-domain budgets, and cost is attributable per domain. | Test: a domain exceeding its budget is throttled locally, not globally. |
+## What the platform can and cannot enforce
 
-## Threats this catalogue is answering
+Domain teams own and customize the code. The conformance suite and boundary checks run in **their**
+CI, which we cannot observe — a fork can remove them.
 
-- An agent reading or writing another customer's or another domain's memory.
-- Sensitive or health-related content persisted without classification or consent.
-- Memory content leaking through logs, traces or error messages — the most common real-world leak.
-- A compromised agent identity escalating through over-broad IAM.
-- One domain exhausting shared quota and causing an outage for another.
-- A supply-chain compromise reaching a domain through a published pattern release.
+Only **platform-owned Terraform** survives a fork: the memory bank, its IAM binding, the audit sink
+and quota alerting, provisioned in the platform project.
+
+So: we control **what a domain's service account may do to a bank**. We do not control what their
+code does before it gets there. Do not claim more than that.
