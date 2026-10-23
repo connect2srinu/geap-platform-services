@@ -120,16 +120,41 @@ end user another's `memoryId`.
 
 ## Tasks
 
-- [ ] `ReplayCache`: bounded, expiring, thread-safe; fingerprint over caller, scope and body
-- [ ] Wire into `remember` after `_resolve`, before validation and the budget
-- [ ] Record only completed outcomes; never a retryable failure
-- [ ] Replay emits the current correlation id, its own audit event, and `decision="replayed"`
-- [ ] `idempotency.retentionSeconds` and `maxEntries` in the config schema, with defaults
-- [ ] Unit tests, including the S-8 two-subject case and the memory bound
-- [ ] Conformance coverage for both halves of the promise
-- [ ] `agent-api.md` and `errors.md`: state the guarantee and its within-instance limit
-- [ ] Record the residual in 001's risk table as compensated, not merely accepted
+- [x] `ReplayCache`: bounded, expiring, thread-safe; namespaced per caller and scope
+- [x] Wire into `remember` after `_resolve`, before validation and the budget
+- [x] Record only completed outcomes; never a retryable failure
+- [x] Replay emits the current correlation id and `decision="replayed"`
+- [ ] Replay emits its own audit event — **blocked**, see below
+- [x] `idempotency.retentionSeconds` and `maxEntries` in the config schema, with defaults
+- [x] Unit tests, including the S-8 two-subject case and the memory bound
+- [x] Conformance coverage for both halves of the promise
+- [x] `errors.md`: state the guarantee and its within-instance limit
+- [ ] `agent-api.md`: the same, **after #11 merges** — this branch predates its rewrite there, and
+      editing the superseded copy would conflict. The only task that must wait
+- [x] Record the residual in 001's risk table as compensated, not merely accepted
 
 ## Approval
 
 Approved by Srinivasa reddy, 2026-10-23, instructed in session.
+
+## Blocked, and why
+
+**The replay audit event cannot be written yet: the API layer has no audit sink.** Checking before
+implementing it, rather than inventing one:
+
+`pattern.yaml` declares seven required audit events — `memory_write`, `memory_deletion`,
+`policy_denial`, `configuration_change`, `role_grant`, `role_revocation`, `exception_invoked`.
+**None of the seven is emitted anywhere in `src/`.** Two events that are not declared
+(`memory_remediation`, `memory_write_unverified`) are emitted, from `verify_write`, which is the
+only component that takes an `AuditSink` at all. `Deployment` has no audit sink, so the `remember`
+path emits nothing — including for a write, which security rule S-7 requires.
+
+This is the same defect shape as the metrics gap found in 011: declared in the manifest, absent
+from the code, and invisible because nothing compared the two.
+
+Adding a sink to the API layer to emit one replay event would be implementing S-7 on the write
+path inside a feature about idempotency, and would leave the other six still missing. It needs
+its own feature, and that feature should include the manifest-versus-code check that would have
+caught this, as `tests/test_observability.py` now does for metrics.
+
+Recorded as `OPEN`, 2026-10-23.
