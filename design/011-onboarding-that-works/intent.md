@@ -1,7 +1,9 @@
 ---
 artifact: intent
 feature: 011-onboarding-that-works
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-23
 ---
 
 # Onboarding a domain can actually complete
@@ -61,7 +63,9 @@ conformance suite against it. If that job passes, the documented path works.
   (19/19); the rehearsal uses the fake bank deliberately, so CI needs no credentials.
 - Any change to the API contract, the error catalogue, an extension point, or a security control.
   If this work appears to need one, it stops and returns to design.
-- Fixing blocker 1 by publishing a release. Whether to release is a separate decision — see below.
+- Publishing a release. Decided 2026-10-23: blocker 1 is fixed by teaching `vendor_pattern.py`
+  to take a git ref or local path instead. A release is still the right thing eventually; it is no
+  longer a prerequisite for adoption, and it is not part of this work.
 
 ## How we'll know it works
 
@@ -83,11 +87,14 @@ conformance suite against it. If that job passes, the documented path works.
 
 | Question | Who decides |
 |---|---|
-| Blocker 1 is circular: a domain cannot vendor without a release, and releasing before anyone has adopted the pattern once publishes an unproven contract. Resolve by letting `vendor_pattern.py` accept a git ref or local path for pre-release adoption, or by cutting v0.1.0 first and accepting the rehearsal as the proof? | Platform lead |
+| ~~Blocker 1 is circular: a domain cannot vendor without a release.~~ **Decided 2026-10-23:** `vendor_pattern.py` accepts a git ref or a local path, so adoption works before a release exists. Pre-release adoption becomes a supported path rather than a workaround, and the release stays honest — it is published once a domain has adopted the pattern, not before. | Platform lead — decided |
 | Should `agent-api.md` and `smoke_test.py` be **generated** from `contracts/openapi.yaml` rather than checked against it? Generation cannot drift; it is also more machinery. | Platform lead |
 | `metadata.status` is `proposed`, and the adoption guide says not to adopt a `proposed` pattern. Does completing this work plus the live verification move it to `beta`? | Platform lead |
 | `VERIFIED` — every defect above was reproduced by running it, not by reading. Evidence in the rehearsal findings. | — |
 
 ## Approval
 
-A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).
+Approved by Srinivasa reddy, 2026-10-23, instructed in session.
+
+Carries one decision: blocker 1 is resolved by making `vendor_pattern.py` accept a git ref or a
+local path, not by publishing a release first.
