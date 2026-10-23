@@ -49,9 +49,15 @@ consumed. The key-present check stays where it is.
 `PROVIDER_UNAVAILABLE` would turn a five-second outage into a permanent one for that key, and the
 caller would be following the `Retry-After` we gave them into a wall.
 
-**The fingerprint** covers the resolved caller id, the resolved scope and the canonical request
-body. Scope is included because it is derived from the end user, and two end users sharing a key
-is the case that produces the worst failure: a `memoryId` from someone else's scope.
+**The key namespace is per caller and per scope** — entries are filed under a digest of the
+caller, the scope and the key, and the fingerprint then identifies the body alone.
+
+*Revised during implementation.* This section first said the fingerprint should cover caller,
+scope and body, with entries filed under the raw key. Testing two end users sending the same key
+with the same body showed that to be wrong: they got `422`, a refusal the contract does not
+sanction, for a collision they can neither see nor fix. A global namespace fails both ways — the
+second end user receives the first's response and a `memoryId` from a scope they cannot read, or
+is refused for someone else's choice of string. Namespacing reaches the same guarantee properly.
 
 **Correlation id.** The replay returns the recorded body with the *current* request's correlation
 id. A replay is a distinct request and must be traceable as one.
