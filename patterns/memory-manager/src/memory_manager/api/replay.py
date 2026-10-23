@@ -12,10 +12,12 @@ promise quietly broken.
 
 Two details that are not obvious and are both load-bearing:
 
-* **The fingerprint covers the caller and the scope, not just the body.** Two end users in one
-  domain resolve to different scopes, and a key is a string a client chose — nothing stops two
-  of them picking the same one. Fingerprinting the body alone would return one end user the
-  other's response, carrying a `memoryId` from a scope they cannot read (security rule S-8).
+* **The key namespace is per caller and per scope, not global.** An idempotency key is a string
+  the client chose, and nothing stops two end users picking the same one. A global namespace
+  gets this wrong in both directions: the second end user either receives the first's response,
+  carrying a `memoryId` from a scope they cannot read (security rule S-8), or is refused `422`
+  for a collision they cannot see and cannot fix. So the entry is filed under a digest of the
+  caller, the scope **and** the key; the fingerprint then only has to identify the body.
 * **Only completed outcomes are recorded.** Caching a `PROVIDER_UNAVAILABLE` would turn a
   five-second outage into a permanent failure for that key, with the caller following the
   `Retry-After` we gave them into a wall.
@@ -51,23 +53,36 @@ class _Entry:
     stored_at: float
 
 
-def fingerprint(caller_id: str, scope: tuple[tuple[str, str], ...], body: Any) -> str:
-    """Identify a request by who asked, for whom, and what they sent.
+def _digest(value: Any) -> str:
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    Scope is part of the identity because it is derived from the end user. Leaving it out is the
-    difference between a replay cache and a cross-scope read.
+
+def scoped_key(
+    caller_id: str, scope: tuple[tuple[str, str], ...], idempotency_key: str
+) -> str:
+    """Where an entry is filed: one namespace per caller and end-user scope.
+
+    Two end users who happen to choose the same key never meet. Nothing they can do to their own
+    keys affects anyone else's, which is both the S-8 property and the reason a second end user
+    is not refused for a collision they cannot see.
     """
-    canonical = json.dumps(
+    return _digest(
         {
             "caller": caller_id,
             "scope": [list(pair) for pair in scope],
-            "body": body,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-        default=str,
+            "key": idempotency_key,
+        }
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def fingerprint(body: Any) -> str:
+    """Identify the request *within* its namespace: the body, canonically.
+
+    This is what distinguishes "the same key with the same payload" from "the same key with a
+    different payload". Who asked is already settled by :func:`scoped_key`.
+    """
+    return _digest(body)
 
 
 class ReplayCache:

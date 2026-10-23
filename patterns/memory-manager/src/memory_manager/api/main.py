@@ -34,6 +34,7 @@ from .auth import (
     resolve_scope,
 )
 from .errors import ErrorCode, error_response
+from .replay import KeyReused, ReplayCache, fingerprint, scoped_key
 from .models import (
     FactResultOut,
     RecalledValueOut,
@@ -72,6 +73,8 @@ class Deployment:
     #: One instance's share of the domain's write budget. Required: a deployment with no budget
     #: cannot bound its consumption of the shared project quota.
     budget: WriteBudget | None = None
+    #: What each idempotency key did on this instance. Per instance by design — see replay.py.
+    replay: ReplayCache = field(default_factory=ReplayCache)
     auth_enabled: bool = True
 
 
@@ -153,6 +156,29 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
         context = _context(deployment, caller, subject, correlation_id)
+
+        # After the caller and scope are resolved, because both are part of a request's identity;
+        # before validation, the budget and the write, because a replay must consume none of them.
+        replay_key = scoped_key(caller.caller_id, context.scope, idempotency_key)
+        request_fingerprint = fingerprint(body.model_dump(mode="json"))
+        try:
+            recorded = deployment.replay.lookup(replay_key, request_fingerprint)
+        except KeyReused:
+            deployment.metrics.increment(
+                "tool_invocations", operation="remember", decision="key_reused"
+            )
+            done("refused")
+            return error_response(ErrorCode.IDEMPOTENCY_KEY_REUSED, correlation_id)
+        if recorded is not None:
+            # The recorded body, but this request's correlation id: a replay is a distinct
+            # request and has to be traceable as one.
+            done("replayed")
+            return JSONResponse(
+                status_code=200,
+                content=recorded,
+                headers={"X-Correlation-Id": correlation_id},
+            )
+
         facts = [
             _to_fact(f.topic, f.field_name, f.value, f.fact, f.basis)
             for f in body.facts
@@ -174,7 +200,10 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
 
         if not approved:
             done("noop")
-            return _ok(
+            return _recorded(
+                deployment,
+                replay_key,
+                request_fingerprint,
                 RememberResponse(outcome="noop", stored=0, results=results),
                 correlation_id,
             )
@@ -228,7 +257,10 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             api_outcome = "written"
 
         done(api_outcome)
-        return _ok(
+        return _recorded(
+            deployment,
+            replay_key,
+            request_fingerprint,
             RememberResponse(
                 outcome=api_outcome,  # type: ignore[arg-type]
                 stored=len(approved),
@@ -400,6 +432,29 @@ def _context(
         operations=caller.operations,
         granted_topics=caller.granted_topics,
         correlation_id=correlation_id,
+    )
+
+
+def _recorded(
+    deployment: Deployment,
+    replay_key: str,
+    request_fingerprint: str,
+    model: RememberResponse,
+    correlation_id: str,
+) -> JSONResponse:
+    """Return a **completed** outcome and record it against the key.
+
+    Only completed outcomes pass through here. A retryable failure — RATE_LIMITED,
+    PROVIDER_UNAVAILABLE — returns through `error_response` and is never recorded, because caching
+    one would turn a transient outage into a permanent failure for that key and send the caller
+    following our own Retry-After into a wall.
+    """
+    body = model.model_dump(exclude_none=True)
+    deployment.replay.record(replay_key, request_fingerprint, body)
+    return JSONResponse(
+        status_code=200,
+        content=body,
+        headers={"X-Correlation-Id": correlation_id},
     )
 
 
