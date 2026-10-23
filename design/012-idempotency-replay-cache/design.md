@@ -1,7 +1,9 @@
 ---
 artifact: design
 feature: 012-idempotency-replay-cache
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-23
 ---
 
 # The idempotency the contract already promises — design
@@ -124,4 +126,4 @@ end user another's `memoryId`.
 
 ## Approval
 
-A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).
+Approved by Srinivasa reddy, 2026-10-23, instructed in session.
