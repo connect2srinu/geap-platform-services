@@ -64,10 +64,11 @@ def main() -> int:
         for path in iter_files(patterns_dir):
             rel = path.relative_to(REPO_ROOT)
             parts = rel.parts
+            # `extensions` is not listed: under the src layout it lives inside the package, at
+            # src/<package>/extensions, so `src` already covers it.
             in_source = len(parts) > 2 and parts[2] in (
                 "src",
                 "contracts",
-                "extensions",
             )
             if not in_source or path.suffix == ".md":
                 continue
@@ -112,8 +113,12 @@ def main() -> int:
                     str(rel),
                     "providers/ imports api/ -- dependencies point downward only",
                 )
+            # Both spellings: the absolute one from before the src layout, and the relative one
+            # the package uses now. Importing the sub-package itself (`from ..extensions import`)
+            # is the protocols and the defaults, which is allowed; reaching into one of its
+            # implementation modules is not.
             if (
-                re.search(r"^\s*from\s+extensions\.", text, re.M)
+                re.search(r"^\s*from\s+\.*extensions\.", text, re.M)
                 and "dispatch" not in path.name
             ):
                 report.error(

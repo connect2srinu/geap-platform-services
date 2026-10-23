@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-manager"
+version = "0.1.0"
+description = "Domain-owned governed memory tool API over a managed Memory Bank"
+requires-python = ">=3.12"
+
+# Pinned to what resolved and was tested on 2026-10-22, not to a guessed range.
+# A domain building its own image gets exactly these.
+dependencies = [
+  "fastapi==0.161.1",
+  "uvicorn[standard]==0.54.0",
+  "pydantic==2.14.1",
+  "PyYAML==6.0.2",
+  "jsonschema==4.25.1",
+  "pyjwt[crypto]==2.15.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.4",
+  # starlette 1.9 deprecates httpx for its TestClient; httpx2 is the supported one.
+  "httpx2==2.16.0",
+  "ruff==0.8.4",
+  "mypy==1.14.0",
+  "types-PyYAML==6.0.12.20250915",
+  "types-jsonschema==4.25.1.20250822",
+]
+
+# The provider SDK is a separate extra: the fake bank covers every test, so a domain that
+# only wants to run the suite does not need it, and CI does not install it.
+provider = [
+  "google-cloud-aiplatform[agent_engines]==2.3.0",
+]
+
+
+# The src layout: `src/` is the build root, not a package. Everything ships under one distinctly
+# named top-level package, so a domain can install this pattern alongside another without the two
+# fighting over a directory called `src` in site-packages.
+#
+# `memory_manager.extensions` carries the pattern's fail-closed defaults. A domain's own extensions
+# live in the domain's own package and are named by dotted path in configuration; they do not go
+# here.
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+memory_manager = ["config.schema.json"]
+
+[tool.mypy]
+strict = true
+
+# The provider SDK ships in the optional 'provider' extra, so a type check that demanded it would
+# force every CI job to install it. The adapter's own surface is typed; the SDK's is not.
+[[tool.mypy.overrides]]
+module = ["agentplatform.*"]
+# Two codes, because the same import fails differently depending on the environment: without the
+# extra mypy reports import-not-found, with it (the package has no py.typed marker) import-untyped.
+# CI runs without it and a developer may run with it; both must behave the same.
+ignore_missing_imports = true
+disable_error_code = ["import-untyped"]

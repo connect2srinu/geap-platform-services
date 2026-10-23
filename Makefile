@@ -13,7 +13,7 @@ PYTHON := $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo p
 UV := $(shell command -v uv 2>/dev/null)
 PYTHON_VERSION := 3.12
 
-.PHONY: help deps verify validate-design validate-manifest check-boundary lint test terraform-validate clean-venv
+.PHONY: help deps verify validate-design validate-manifest check-boundary lint typecheck test terraform-validate clean-venv
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -47,16 +47,18 @@ deps: ## Create .venv (Python 3.12) and install validation + dev dependencies
 	@if [ -n "$(UV)" ]; then \
 		uv pip install --python $(VENV)/bin/python -r scripts/requirements.txt; \
 		uv pip install --python $(VENV)/bin/python ruff==0.8.4 mypy==1.14.0 pytest==8.3.4; \
+		uv pip install --python $(VENV)/bin/python -e 'patterns/memory-manager[dev]'; \
 	else \
 		$(VENV)/bin/python -m pip install --quiet --upgrade pip; \
 		$(VENV)/bin/python -m pip install -r scripts/requirements.txt; \
 		$(VENV)/bin/python -m pip install ruff==0.8.4 mypy==1.14.0 pytest==8.3.4; \
+		$(VENV)/bin/python -m pip install -e 'patterns/memory-manager[dev]'; \
 	fi
 	@echo
 	@echo "Done. Every target now uses $(VENV)/bin/python."
 	@echo "Activate it for ad-hoc commands with:  source $(VENV)/bin/activate"
 
-verify: validate-design validate-manifest check-boundary lint test ## Run every available check
+verify: validate-design validate-manifest check-boundary lint typecheck test ## Run every available check
 
 validate-design: ## Validate SDLC design artifacts
 	@$(PYTHON) scripts/validate_design_artifacts.py
@@ -68,6 +70,20 @@ check-boundary: ## Check platform/domain boundary and layering rules
 	@$(PYTHON) scripts/check_platform_domain_boundary.py
 
 # Runs the same two checks as the Python CI lint job, so a local pass means a CI pass.
+typecheck: ## Type-check pattern source (reports unavailable if mypy is absent)
+	@if [ -x $(VENV)/bin/mypy ]; then mypy=$(VENV)/bin/mypy; \
+	elif command -v mypy >/dev/null 2>&1; then mypy=mypy; \
+	else echo "unavailable: mypy is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	checked=0; \
+	for pattern in patterns/*/; do \
+	  find "$$pattern/src" -name '*.py' -print -quit 2>/dev/null | grep -q . || continue; \
+	  mypy_abs=$$(cd $$(dirname $$mypy) 2>/dev/null && pwd)/$$(basename $$mypy); \
+	  [ -x "$$mypy_abs" ] || mypy_abs=$$mypy; \
+	  ( cd "$$pattern" && "$$mypy_abs" --strict src ) || exit 1; \
+	  checked=$$((checked + 1)); \
+	done; \
+	if [ "$$checked" -eq 0 ]; then echo "No pattern source present yet — skipped, not passed."; fi
+
 lint: ## Lint Python (reports unavailable if ruff is absent)
 	@if [ -x $(VENV)/bin/ruff ]; then ruff=$(VENV)/bin/ruff; \
 	elif command -v ruff >/dev/null 2>&1; then ruff=ruff; \
@@ -75,11 +91,11 @@ lint: ## Lint Python (reports unavailable if ruff is absent)
 	$$ruff check patterns scripts templates && $$ruff format --check patterns scripts templates
 
 # pytest exits 5 when it collects nothing: skipped, not passed. Any other failure must fail.
-test: ## Run platform unit tests (reports unavailable if pytest is absent)
+test: ## Run unit tests, plus the conformance suite against the reference implementation
 	@if [ -x $(VENV)/bin/pytest ]; then pytest=$(VENV)/bin/pytest; \
 	elif command -v pytest >/dev/null 2>&1; then pytest=pytest; \
 	else echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
-	dirs=""; for d in patterns/*/tests tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
+	dirs=""; for d in patterns/*/tests patterns/*/conformance tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
 	if [ -z "$$dirs" ]; then echo "No test directories present yet — skipped, not passed."; exit 0; fi; \
 	rc=0; $$pytest -q $$dirs || rc=$$?; \
 	if [ $$rc -eq 5 ]; then echo "No tests collected yet — skipped, not passed."; exit 0; fi; \

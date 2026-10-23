@@ -27,7 +27,45 @@ Probed against a real Memory Bank on 2026-10-22 with
 | Bank-level TTL applies, survives consolidation, and the memory expires | **PASS** — a consolidation update **resets** the TTL |
 | Scope-only retrieve returns everything, with pagination | **PASS** — 12 memories over 3 pages, 0 missing |
 | Read-after-write latency | **PASS** — p99 0.16 s against a 10 s bound |
-| Memory Bank supports a customer-managed key | **UNAVAILABLE** — Cloud KMS not enabled. **Not a "no"** — undetermined |
+| Memory Bank supports a customer-managed key | **PARTLY RESOLVED, 2026-10-23** — the API surface accepts one: `CreateMemoryBankConfig.encryption_spec.kms_key_name`, verified by inspecting the installed SDK. Settable **only at bank creation**. That it works end to end is still **UNAVAILABLE** — Cloud KMS is not enabled, so nothing was created with one |
+
+**The client moved under us (2026-10-23).** `vertexai.Client` is deprecated in the same pinned
+release in favour of `agentplatform.Client`, and the memory operations move from
+`agent_engines.memories` to `memory_banks.memories`. Every method name and keyword the adapter
+uses was compared across the two clients and is identical, so this is a client swap, not a
+redesign — no version bump, no contract change, and the `MemoryBank` Protocol is untouched.
+
+**The resource is unchanged, and I first got this wrong.** `memory_banks` reads like a new
+first-class resource, and a grep of the package found `memoryBanks/<id>` path patterns, so the
+adapter, the Terraform IAM Condition and this table were changed to match. That was wrong: the
+module still POSTs to `reasoningEngines`, and the `memoryBanks/` patterns belong to a helper that
+*parses* either spelling. A bank remains one Agent Engine carrying a
+`context_spec.memory_bank_config` — `reasoningEngines/<id>` — which is what the spike observed
+live on 2026-10-22. All of it is reverted. Recorded because an IAM Condition was changed on the
+strength of a grep, and the condition is the one platform-side control that cannot be bypassed.
+
+**Correction to an earlier claim.** The Terraform module said the provider had no resource for the
+engine. Checked against the pinned provider's own schema: google 7.45 *does* have
+`google_vertex_ai_reasoning_engine` and its IAM resources, though they do not express the memory
+bank configuration — so the bank is still created out of band, but the earlier wording overstated
+the gap.
+
+**Live verification of the implementation, 2026-10-23.** Everything above was probe code against
+the SDK. `spike/verify_live.py` drives the *service* — endpoints, policy pipeline, adapter,
+read-back verification — against a real bank (`geap-probe-tier1-main`, project `e2eml-222003`).
+**19/19 checks passed:** write round trip 2.1 s, `ACCEPTED` with a memory id, read-back
+verification clean, recall returning the fact with its topic and field prefix decoded and nothing
+withheld, a sensitive topic refused before reaching the provider, a conflicting second write
+consolidating into one memory rather than duplicating, and a second end user seeing an empty
+scope. Memories written by the run were deleted afterwards.
+
+Two observations from the run, neither a defect:
+
+- `list` is **not** eventually consistent here — a written memory appeared in a scope listing
+  0.6 s after the write, measured directly. The read-back path can rely on it.
+- The pipeline denies when a domain's extension has the wrong method signature. The first run of
+  the script had `decide` wrong and every fact came back `TOPIC_NOT_APPROVED`. That is the
+  fail-closed rule working, observed by accident against a real provider.
 
 **Two hard provider limits found:**
 
@@ -123,17 +161,30 @@ idempotency store, which v0.1.0 has no room for.
 
 ## Tasks
 
-- [ ] OpenAPI contract + error catalogue
-- [ ] Topic configuration schema + example
-- [ ] `pii-classifier`, `policy-provider`, `topic-provider`, `entity-resolver` interfaces + defaults
-- [ ] Validation pipeline (topic, field, type, sensitivity, ownership, basis)
-- [ ] Memory Bank adapter: generate, retrieve, rollback, delete + fake client
-- [ ] Read-back re-classification and remediation
-- [ ] `remember` and `recall` endpoints
-- [ ] Auth: token verification, server-side scope, HMAC pseudonym
-- [ ] Unit tests, including one per security rule
-- [ ] Conformance suite
-- [ ] Reference Terraform and `pattern.yaml`
+- [x] OpenAPI contract + error catalogue
+- [x] Topic configuration schema + example
+- [x] `pii-classifier`, `policy-provider`, `topic-provider`, `entity-resolver` interfaces + defaults
+- [x] Validation pipeline (topic, field, type, sensitivity, ownership, basis)
+- [x] Memory Bank adapter: generate, retrieve, rollback, delete + fake client
+- [x] Read-back re-classification and remediation
+- [x] `remember` and `recall` endpoints
+- [x] Auth: token verification, server-side scope, HMAC pseudonym
+- [x] Unit tests, including one per security rule
+- [x] Conformance suite
+- [x] Reference Terraform and `pattern.yaml`
+- [x] Startup wiring: configuration loading, the write budget, the metrics the manifest declares
+
+The last item was not in the approved plan. Reviewing the manifest against the code found three
+gaps that no earlier task owned, and each one is a deployment that looks healthy and is not:
+
+| Gap | Consequence | VERIFIED by |
+|---|---|---|
+| 7 of 12 declared metrics emitted nowhere, two of them named by the alert policies | An alert that is configured and never fires | `tests/test_observability.py` parses the package for `increment` calls and compares both ways against `pattern.yaml` |
+| `quota.maxWritesPerMinute` configured, read by nothing | A domain can exhaust the quota three other domains share | `WriteBudget`; `create_app` refuses to start without one |
+| The example `Dockerfile` ran `pattern.api.main:app`, which does not exist, and nothing read the environment Terraform sets | A domain following the pattern cannot start the service | `memory_manager/bootstrap.py` + `memory_manager/asgi.py`; `tests/test_bootstrap.py` boots the shipped example config |
+
+Fixing them is a change to the pattern's startup surface, not to its architecture, contract or
+security posture: no endpoint, error code, extension point or control changed.
 
 ## Approval
 

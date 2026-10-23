@@ -1,0 +1,436 @@
+openapi: 3.1.0
+
+info:
+  title: Memory Manager
+  version: 0.1.0
+  license:
+    name: Internal — Agent Platform team
+    identifier: LicenseRef-Internal
+  description: |
+    A domain-owned governed write path for agent memory.
+
+    An agent submits already-structured facts. The service resolves the caller and the owning memory
+    scope **server-side**, selects eligible topics from the domain's configuration, validates each
+    fact, writes approved facts to the Memory Bank, then reads them back and re-classifies because
+    provider consolidation can rewrite a fact after validation.
+
+    **This contract is identical across every domain.** A domain configures policy behind it; it does
+    not change the surface. That is what lets one agent work against any domain's deployment.
+
+    See `design/001-memory-manager/design.md` and `contracts/errors.md`.
+
+servers:
+  - url: https://{host}/v1
+    description: A domain's deployment
+    variables:
+      host:
+        default: memory-manager.example-domain.internal
+
+security:
+  - endUserToken: []
+
+tags:
+  - name: memory
+    description: Governed memory operations
+
+paths:
+  /memories:
+    post:
+      tags: [memory]
+      operationId: remember
+      summary: Submit structured facts for governed storage
+      description: |
+        Validates each fact and stores the approved ones.
+
+        Always returns `200` when the request itself is well formed and the caller is permitted —
+        including when **nothing** qualifies. A fully filtered request is a no-op, not an error: the
+        agent did nothing wrong by offering a fact the domain does not accept.
+
+        Writes are synchronous in v0.1.0. There is no queue and no `202`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RememberRequest' }
+            examples:
+              allowed:
+                summary: A fact in an allowed, non-sensitive topic
+                value:
+                  facts:
+                    - topic: preferred_brands
+                      field: brand
+                      value: Horizon
+                      fact: The user prefers the organic brand Horizon.
+                      basis: stated
+              labelDoesNotGrantPassage:
+                summary: An allowed topic whose value carries prohibited content — rejected
+                value:
+                  facts:
+                    - topic: preferred_brands
+                      field: brand
+                      value: Horizon
+                      fact: The user takes 20mg atorvastatin and prefers Horizon.
+                      basis: stated
+      responses:
+        '200':
+          description: |
+            Processed. Every fact carries its own outcome; read `results`, not just the status.
+          headers:
+            RateLimit-Remaining: { $ref: '#/components/headers/RateLimitRemaining' }
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RememberResponse' }
+              examples:
+                stored:
+                  summary: One fact stored and verified
+                  value:
+                    outcome: written
+                    stored: 1
+                    results:
+                      - index: 0
+                        topic: preferred_brands
+                        reasonCode: ACCEPTED
+                        memoryId: 7f3a1c92
+                noop:
+                  summary: Nothing qualified — a no-op, not an error
+                  value:
+                    outcome: noop
+                    stored: 0
+                    results:
+                      - index: 0
+                        topic: medical_conditions
+                        reasonCode: TOPIC_SENSITIVE
+                unverified:
+                  summary: Written, but read-back verification could not complete
+                  value:
+                    outcome: written_unverified
+                    stored: 1
+                    results:
+                      - index: 0
+                        topic: preferred_brands
+                        reasonCode: ACCEPTED
+                        memoryId: 7f3a1c92
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+    get:
+      tags: [memory]
+      operationId: recall
+      summary: Retrieve stored memory for the caller's scope
+      description: |
+        Returns memory for the scope derived from the authenticated caller, restricted to topics
+        that are approved for this caller, enabled, and eligible.
+
+        Values are **re-classified before being returned**, as a backstop against a consolidation
+        that rewrote a fact into prohibited content after it was stored. A value that now fails
+        classification is withheld and counted in `withheld`.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+        - name: topic
+          in: query
+          description: Restrict to one topic. Omit for every eligible topic.
+          schema: { $ref: '#/components/schemas/TopicId' }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 25 }
+        - name: pageToken
+          in: query
+          schema: { type: string, maxLength: 4096 }
+      responses:
+        '200':
+          description: The caller's eligible memory.
+          headers:
+            X-Correlation-Id: { $ref: '#/components/headers/CorrelationId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecallResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness — no dependencies
+      security: []
+      responses:
+        '200':
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { status: { const: ok } }
+
+  /readyz:
+    get:
+      operationId: readyz
+      summary: Readiness — configuration valid and the Memory Bank reachable
+      description: |
+        Fails until the platform-owned Memory Bank IAM binding exists. On a first deployment that is
+        expected, not a defect.
+      security: []
+      responses:
+        '200':
+          description: Ready to serve.
+        '503':
+          description: Not ready. The body names which dependency, never its configuration.
+
+components:
+  securitySchemes:
+    endUserToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        The end user's token, forwarded by the agent and verified against a domain-configured issuer
+        and JWKS. The subject resolves to the memory scope **server-side**; a scope in the request
+        body is refused. Local development may accept a header instead, and the service refuses to
+        start with that enabled outside a local environment.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        **Required.** A stable key per logical write. The same key with the same payload yields one
+        effect and returns the original result; the same key with a different payload returns `422`.
+      schema: { type: string, minLength: 8, maxLength: 128 }
+
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Propagated if supplied, generated otherwise, and always returned.
+      schema: { type: string, maxLength: 128 }
+
+  headers:
+    CorrelationId:
+      description: Quote this in any defect report — it is how a request is traced.
+      schema: { type: string }
+    RateLimitRemaining:
+      description: Requests left in the caller's own window.
+      schema: { type: integer }
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer }
+
+  schemas:
+    TopicId:
+      type: string
+      pattern: '^[a-z][a-z0-9_]{2,48}$'
+      description: A topic id from the domain's configuration.
+      examples: [preferred_brands]
+
+    Fact:
+      type: object
+      required: [topic, value, fact]
+      additionalProperties: false
+      properties:
+        topic: { $ref: '#/components/schemas/TopicId' }
+        field:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{1,48}$'
+          description: The attribute within the topic. Validated against the topic's schema.
+        value:
+          description: The value to store. Type is validated against the topic's declared type.
+          oneOf:
+            - { type: string, maxLength: 512 }
+            - { type: number }
+            - { type: boolean }
+        fact:
+          type: string
+          minLength: 3
+          maxLength: 1024
+          description: |
+            The fact as a sentence, which is what the Memory Bank stores. Classified in full — a
+            permitted topic does not exempt its text.
+        basis:
+          type: string
+          enum: [stated, inferred]
+          default: stated
+          description: |
+            `stated` means the user said it. `inferred` means it was derived. A topic accepts
+            `inferred` only when its configuration sets `allowInferred: true`; the default is
+            `false`, so an unsupported inference is rejected rather than stored.
+
+    RememberRequest:
+      type: object
+      required: [facts]
+      additionalProperties: false
+      properties:
+        facts:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: { $ref: '#/components/schemas/Fact' }
+          description: |
+            **At most five.** This is a hard provider limit: `GenerateMemories` accepts five facts per
+            request, verified live on 2026-10-22. Splitting a larger request across several provider
+            calls would reintroduce the partial-failure semantics the synchronous design exists to
+            avoid, so the contract caps it instead. More than five returns `400`.
+
+    FactResult:
+      type: object
+      required: [index, topic, reasonCode]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Position in the submitted `facts` array.
+        topic: { $ref: '#/components/schemas/TopicId' }
+        reasonCode: { $ref: '#/components/schemas/FactReasonCode' }
+        memoryId:
+          type: string
+          description: Present only when `reasonCode` is `ACCEPTED`. An opaque handle, never a provider resource name.
+
+    FactReasonCode:
+      type: string
+      description: Per-fact outcome. See `contracts/errors.md`.
+      enum:
+        - ACCEPTED
+        - TOPIC_UNKNOWN
+        - TOPIC_DISABLED
+        - TOPIC_NOT_APPROVED
+        - TOPIC_SENSITIVE
+        - TOPIC_RESTRICTED
+        - FIELD_UNKNOWN
+        - VALUE_TYPE_INVALID
+        - VALUE_PROHIBITED
+        - INFERENCE_NOT_PERMITTED
+        - CLASSIFIER_ERROR
+
+    RememberResponse:
+      type: object
+      required: [outcome, stored, results]
+      additionalProperties: false
+      properties:
+        outcome:
+          type: string
+          enum: [written, written_unverified, noop]
+          description: |
+            `written` — stored and read-back verification passed.
+            `written_unverified` — stored, but verification could not complete. **Never reported as
+            verified.** An audit event, a metric and an alert accompany it, and recall re-checks.
+            `noop` — nothing qualified. Not an error.
+        stored:
+          type: integer
+          minimum: 0
+          maximum: 5
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/FactResult' }
+
+    RecalledValue:
+      type: object
+      required: [topic, value, fact]
+      additionalProperties: false
+      properties:
+        topic: { $ref: '#/components/schemas/TopicId' }
+        field: { type: string }
+        value: {}
+        fact: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    RecallResponse:
+      type: object
+      required: [values, withheld]
+      additionalProperties: false
+      properties:
+        values:
+          type: array
+          items: { $ref: '#/components/schemas/RecalledValue' }
+        withheld:
+          type: integer
+          minimum: 0
+          description: |
+            Values withheld because they failed re-classification at read time. A non-zero value
+            means a stored memory now carries prohibited content and is being remediated.
+        nextPageToken:
+          type: string
+          description: Absent on the last page.
+
+    Error:
+      type: object
+      required: [code, message, correlationId]
+      additionalProperties: false
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message:
+          type: string
+          description: |
+            Human-readable and **free of payload content**. Never a provider's raw error text.
+        correlationId: { type: string }
+        retryable: { type: boolean }
+
+    ErrorCode:
+      type: string
+      description: Request-level error. See `contracts/errors.md`.
+      enum:
+        - MALFORMED_REQUEST
+        - TOO_MANY_FACTS
+        - IDEMPOTENCY_KEY_MISSING
+        - IDEMPOTENCY_KEY_REUSED
+        - UNAUTHENTICATED
+        - TOKEN_INVALID
+        - CALLER_NOT_REGISTERED
+        - CALLER_NOT_PERMITTED
+        - SCOPE_NOT_RESOLVABLE
+        - SCOPE_IN_BODY_REFUSED
+        - RATE_LIMITED
+        - CONFIGURATION_INVALID
+        - PROVIDER_UNAVAILABLE
+
+  responses:
+    BadRequest:
+      description: Malformed, or more than five facts.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthenticated:
+      description: Missing or invalid token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: |
+        Authenticated but not permitted — a fail-closed denial, including an attempt to set a scope in
+        the request body.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: The idempotency key was reused with a different payload.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: |
+        **The caller's own** rate limit. A provider `429` is never surfaced as this — it becomes
+        `503 PROVIDER_UNAVAILABLE`.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: |
+        A dependency is unavailable, or the provider throttled the write. The write was **not**
+        accepted — retry with the same idempotency key.
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

@@ -20,7 +20,8 @@ configures policy behind it and does not change the surface.
 
 ## Configuration and extension points
 
-See [`config/config.schema.json`](config/config.schema.json) and [`extensions/`](extensions/).
+See [`src/<pattern_name>/config.schema.json`](src/) and `src/<pattern_name>/extensions/`.
+`src/` is a build root holding one package — see [`src/README.md`](src/README.md).
 
 | Extension point | Required | Default | Failure mode |
 |---|---|---|---|

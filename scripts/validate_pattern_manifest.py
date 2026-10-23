@@ -25,7 +25,6 @@ REQUIRED_DIRS = [
     "contracts",
     "src",
     "config",
-    "extensions",
     "tests",
     "conformance",
     "examples",
@@ -80,6 +79,42 @@ def validate_pattern(folder: Path, schema: dict, report: Report) -> None:
         else:
             report.ok()
 
+    # The src layout. `src/` is a build root holding exactly one distinctly named package, never
+    # a package itself: two patterns that both ship a top-level `src` cannot be installed side by
+    # side, and whichever lands second silently wins in site-packages.
+    src_dir = folder / "src"
+    if src_dir.is_dir():
+        if (src_dir / "__init__.py").exists():
+            report.error(
+                f"{rel}/src",
+                "src/ must be a build root, not a package: remove src/__init__.py and move the "
+                "modules under src/<package_name>/",
+            )
+        else:
+            report.ok()
+        packages = [
+            d
+            for d in sorted(src_dir.iterdir())
+            if d.is_dir() and (d / "__init__.py").is_file()
+        ]
+        if len(packages) != 1:
+            report.error(
+                f"{rel}/src",
+                f"expected exactly one package under src/, found {len(packages)}: "
+                f"{[d.name for d in packages]}",
+            )
+        else:
+            report.ok()
+            expected = meta["name"].replace("-", "_")
+            if packages[0].name != expected:
+                report.error(
+                    f"{rel}/src",
+                    f"package is '{packages[0].name}' but the pattern is named "
+                    f"'{meta['name']}'; expected src/{expected}/",
+                )
+            else:
+                report.ok()
+
     # Every path the manifest references must exist.
     referenced: list[tuple[str, str]] = []
     for iface in spec["interfaces"]:
@@ -90,6 +125,8 @@ def validate_pattern(folder: Path, schema: dict, report: Report) -> None:
         referenced.append((f"configuration.examples[{i}]", ex))
     for key in ("platformOwned", "domainOwned"):
         referenced.append((f"infrastructure.{key}", spec["infrastructure"][key]))
+    for ep in spec.get("extensionPoints", []):
+        referenced.append((f"extensionPoints[{ep['id']}].interface", ep["interface"]))
     referenced.append(("build.dockerfile", spec["build"]["dockerfile"]))
     referenced.append(("tests.unit", spec["tests"]["unit"]))
     referenced.append(("tests.conformance", spec["tests"]["conformance"]))
