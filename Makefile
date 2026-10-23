@@ -47,10 +47,12 @@ deps: ## Create .venv (Python 3.12) and install validation + dev dependencies
 	@if [ -n "$(UV)" ]; then \
 		uv pip install --python $(VENV)/bin/python -r scripts/requirements.txt; \
 		uv pip install --python $(VENV)/bin/python ruff==0.8.4 mypy==1.14.0 pytest==8.3.4; \
+		uv pip install --python $(VENV)/bin/python -e 'patterns/memory-manager[dev]'; \
 	else \
 		$(VENV)/bin/python -m pip install --quiet --upgrade pip; \
 		$(VENV)/bin/python -m pip install -r scripts/requirements.txt; \
 		$(VENV)/bin/python -m pip install ruff==0.8.4 mypy==1.14.0 pytest==8.3.4; \
+		$(VENV)/bin/python -m pip install -e 'patterns/memory-manager[dev]'; \
 	fi
 	@echo
 	@echo "Done. Every target now uses $(VENV)/bin/python."
