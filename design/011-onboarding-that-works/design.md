@@ -128,17 +128,28 @@ manifest digest — so a modified `pattern.yaml` fails regardless of source.
 
 ## Tasks
 
-- [ ] `vendor_pattern.py`: `ref:` and `path:` sources, resolved commit recorded, skipped checksum stated
-- [ ] Rewrite `templates/domain-consumer/config/domain-config.yaml` to the enforced schema
-- [ ] Rewrite `templates/domain-consumer/scripts/smoke_test.py` against the synchronous contract
-- [ ] Rewrite `templates/domain-consumer/docs/agent-api.md`; add the check against `contracts/openapi.yaml`
-- [ ] Fix the template `Dockerfile` entry point and the missing `uv.lock` assumption
-- [ ] `DEFAULT_CONFIG_PATH` → `domain-config.yaml`, with a test
-- [ ] Add `.env.example` with names and empty values, and a check that it carries no value
-- [ ] Sample extensions for the rehearsal, named so they cannot be mistaken for production code
-- [ ] The rehearsal CI job, including the S-4 log assertion
-- [ ] `docs/onboarding/domain-adoption.md`: real steps, real template, no `/domain-onboard`
-- [ ] `docs/onboarding/demo.md`: local-run section rewritten against the rehearsal
+- [x] `vendor_pattern.py`: `ref:` and `path:` sources, resolved commit recorded, skipped checksum stated
+- [x] Rewrite `templates/domain-consumer/config/domain-config.yaml` to the enforced schema
+- [x] Rewrite `templates/domain-consumer/scripts/smoke_test.py` against the synchronous contract
+- [x] Rewrite `templates/domain-consumer/docs/agent-api.md`; add the check against `contracts/openapi.yaml`
+- [x] Fix the template `Dockerfile` entry point and the missing `uv.lock` assumption
+- [x] `DEFAULT_CONFIG_PATH` → `domain-config.yaml`, with a test
+- [x] Add `.env.example` with names and empty values, and a check that it carries no value
+- [x] Sample extensions for the rehearsal, named so they cannot be mistaken for production code
+- [x] The rehearsal CI job, including the S-4 log assertion
+- [x] `docs/onboarding/domain-adoption.md`: real steps, real template, no `/domain-onboard`
+- [x] `docs/onboarding/demo.md`: local-run section rewritten against the rehearsal
+
+## Found while implementing
+
+Three things the work surfaced that were not in the plan. The first two are fixed here; the third
+is not, and must not be.
+
+| Found | Treatment |
+|---|---|
+| `vendor_pattern.py` wrote the manifest digest unindented on its own line, because `\s*` crossed the newline when the key had no value yet — exactly how the template ships. The first vendoring a domain performed corrupted its own lock file | Fixed in task 1, with a test |
+| The conformance suite cannot run from a runtime install: it needs an HTTP client from the `[dev]` extra, and nothing said so. "The step that matters" could not be run as documented | Fixed in task 9; both guides now say to install the extra |
+| **`IDEMPOTENCY_KEY_REUSED` is declared and unimplemented.** It is in the error catalogue, in `contracts/openapi.yaml`, in the conformance suite's code list, and named in both guides as something a domain must not change — but raised nowhere in `src/`. The service checks the key is present and discards it, so replaying a key with a different body silently writes | **OPEN.** Not fixed here. It is pattern behaviour, not onboarding material, and carries a design question: an in-memory key store is per-instance, so with N instances idempotency would be unreliable in the same way the write budget was. Needs its own feature |
 
 ## Approval
 
