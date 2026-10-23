@@ -53,3 +53,9 @@ packages = [
 
 [tool.mypy]
 strict = true
+
+# The provider SDK ships in the optional 'provider' extra, so a type check that demanded it would
+# force every CI job to install it. The adapter's own surface is typed; the SDK's is not.
+[[tool.mypy.overrides]]
+module = ["vertexai.*"]
+ignore_missing_imports = true
