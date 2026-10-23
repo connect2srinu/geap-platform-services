@@ -1,7 +1,9 @@
 ---
 artifact: intent
 feature: 012-idempotency-replay-cache
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-23
 ---
 
 # The idempotency the contract already promises
@@ -79,11 +81,14 @@ does not have it.
 
 | Question | Who decides |
 |---|---|
-| The contract says a different payload "returns `422`", with no qualification. A per-instance cache cannot promise that across instances. Implement to the wording and record the cross-instance gap as a residual risk — consistent with how 001 already treats it — or change the wording to describe a best-effort guarantee? Changing it is a contract change and would need its own approval. | Platform architect |
-| Should the payload fingerprint cover the resolved caller and scope as well as the body? Two callers using the same key is possible; treating their writes as one would be wrong. | Platform architect |
+| ~~The contract says a different payload "returns `422`" with no qualification.~~ **Decided 2026-10-23:** implement to the current wording and record the cross-instance gap as a residual risk, consistent with how 001 already treats it. No contract change. | Platform architect — decided |
+| ~~Should the payload fingerprint cover the resolved caller and scope as well as the body?~~ **Resolved by evidence, 2026-10-23:** yes. Two end users in the same domain resolve to distinct scopes (`user_id 4590da15…` and `664c847e…`), so a body-only fingerprint would hand one caller the other's response, carrying a `memoryId` from a scope they cannot read. `VERIFIED` by computing both scopes. | — |
 | What expiry? Long enough to cover a client's retry budget, short enough to bound memory. 001 named no number. | Platform lead |
 | `ASSUMPTION` — session affinity meaningfully raises the chance a retry reaches the same instance. It is configured, but its effect has not been measured here. | — |
 
 ## Approval
 
-A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).
+Approved by Srinivasa reddy, 2026-10-23, instructed in session.
+
+Carries one decision: implement to the contract as written, and record the cross-instance gap as
+a residual risk with an expiry, rather than weakening the wording.
