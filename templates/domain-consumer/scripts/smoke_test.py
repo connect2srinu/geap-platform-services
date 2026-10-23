@@ -2,15 +2,20 @@
 """Post-deployment smoke test for a domain's Memory Manager.
 
 Proves the deployment actually works end to end, against the real managed service -- which unit
-tests and a mock provider cannot do.
+tests and a fake provider cannot do.
 
-    python3 scripts/smoke_test.py --base-url https://<service-url>
+    python3 scripts/smoke_test.py --base-url https://<service-url> --agent-id <your-caller-id>
 
 Identity comes from --token, else $ID_TOKEN, else `gcloud auth print-identity-token`.
 Standard library only, so it runs in CI without a project environment.
 
-Exits non-zero on the first failure. Each check prints passed / failed; nothing is reported as
-passing that did not run.
+The topic and field default to the ones in the shipped template configuration. Pass yours.
+
+Every check prints passed or failed, and the run exits non-zero if any failed. Nothing is
+reported as passing that did not run.
+
+Note on what a failure means here: a fact the domain's policy REFUSES is a successful request
+with `outcome: noop`, not an error. This script checks for the outcome, not the status code.
 """
 
 from __future__ import annotations
@@ -51,6 +56,7 @@ def call(
     method: str,
     path: str,
     token: str,
+    agent_id: str | None = None,
     body: dict | None = None,
     idempotency_key: str | None = None,
 ) -> tuple[int, dict | str]:
@@ -60,6 +66,8 @@ def call(
         data=json.dumps(body).encode() if body is not None else None,
     )
     request.add_header("Authorization", f"Bearer {token}")
+    if agent_id:
+        request.add_header("X-Agent-ID", agent_id)
     if body is not None:
         request.add_header("Content-Type", "application/json")
     if idempotency_key:
@@ -85,10 +93,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--token")
-    parser.add_argument("--attribute", default="smoke_test_preference")
+    parser.add_argument(
+        "--agent-id", default="example-writer-agent", help="your registered caller id"
+    )
+    parser.add_argument("--topic", default="example_preference")
+    parser.add_argument("--field", default="preference")
+    parser.add_argument(
+        "--sensitive-topic",
+        default="example_sensitive_topic",
+        help="a topic your configuration classifies sensitive or restricted",
+    )
     args = parser.parse_args()
 
     token = identity_token(args.token)
+    agent = args.agent_id
     failures: list[str] = []
 
     def check(name: str, ok: bool, detail: str = "") -> None:
@@ -98,91 +116,113 @@ def main() -> int:
             print(f"{RED}failed{RESET}  {name}" + (f" — {detail}" if detail else ""))
             failures.append(name)
 
-    # 1. Readiness. Fails until the PLATFORM-OWNED memory bank IAM binding exists, which is
-    #    expected on a first deploy -- see docs/runbook.md.
-    status, payload = call(args.base_url, "GET", "/readyz", token)
-    check("readiness", status == 200, f"status {status}: {payload}")
-    if status != 200:
-        print(
-            "\n  /readyz is failing. If this is a first deployment, the platform team may not"
-        )
-        print(
-            "  have applied the memory bank IAM binding yet. Check that before debugging code."
-        )
-        return 1
+    def fact(value: str, text: str, topic: str | None = None) -> dict:
+        return {
+            "facts": [
+                {
+                    "topic": topic or args.topic,
+                    "field": args.field,
+                    "value": value,
+                    "fact": text,
+                }
+            ]
+        }
 
-    # 2. A write is accepted and durably enqueued.
+    status, payload = call(args.base_url, "GET", "/readyz", token, agent)
+    check("readiness", status == 200, f"status {status}: {payload}")
+
+    # 1. A clean fact is stored, synchronously. There is no queue: by the time this returns, the
+    #    write has been made and read back.
+    value = f"smoke-{uuid.uuid4().hex[:8]}"
     key = str(uuid.uuid4())
-    value = f"smoke-{key[:8]}"
     status, payload = call(
         args.base_url,
         "POST",
         "/v1/memories",
         token,
-        body={
-            "fact": {"attribute": args.attribute, "value": value},
-            "extraction_mode": "none",
-        },
-        idempotency_key=key,
+        agent,
+        fact(value, f"Smoke test preference {value}."),
+        key,
     )
-    # 202 means durably enqueued. 503 means NOT accepted -- a real distinction, not a nuance.
-    check("remember returns 202", status == 202, f"status {status}: {payload}")
-
-    # 3. The same key twice must produce one effect, not two.
-    status_repeat, _ = call(
-        args.base_url,
-        "POST",
-        "/v1/memories",
-        token,
-        body={
-            "fact": {"attribute": args.attribute, "value": value},
-            "extraction_mode": "none",
-        },
-        idempotency_key=key,
-    )
+    body = payload if isinstance(payload, dict) else {}
+    check("remember returns 200", status == 200, f"status {status}: {payload}")
     check(
-        "duplicate idempotency key is accepted idempotently",
-        status_repeat in (200, 202),
-        f"status {status_repeat}",
+        "the fact was stored",
+        body.get("outcome") in ("written", "written_unverified"),
+        f"outcome {body.get('outcome')}: {body.get('results')}",
     )
-
-    # 4. A different payload under the same key must be refused.
-    status_conflict, _ = call(
-        args.base_url,
-        "POST",
-        "/v1/memories",
-        token,
-        body={
-            "fact": {"attribute": args.attribute, "value": value + "-different"},
-            "extraction_mode": "none",
-        },
-        idempotency_key=key,
-    )
-    check(
-        "same key with a different payload returns 422",
-        status_conflict == 422,
-        f"status {status_conflict}",
-    )
-
-    # 5. The value reads back. Writes are asynchronous and provider reads are eventually
-    #    consistent, so this is retried rather than asserted once.
-    found = False
-    for _ in range(10):
-        status, payload = call(
-            args.base_url, "GET", f"/v1/memories?attribute={args.attribute}", token
+    if body.get("outcome") == "written_unverified":
+        print(
+            "        note: stored, but the service could not re-read it to confirm. "
+            "Not a smoke-test failure; worth an operator's attention."
         )
-        if status == 200 and value in json.dumps(payload):
-            found = True
-            break
-        import time
 
-        time.sleep(3)
-    check("recall returns the written value", found, "not visible within 30s")
+    # 2. Replaying the same key with the same body returns the original outcome.
+    status_repeat, repeat = call(
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        agent,
+        fact(value, f"Smoke test preference {value}."),
+        key,
+    )
+    check(
+        "replaying the same key is idempotent",
+        status_repeat == 200,
+        f"status {status_repeat}: {repeat}",
+    )
 
-    # 6. An unauthenticated caller is refused (control C-01).
-    request = urllib.request.Request(f"{args.base_url.rstrip('/')}/v1/memories")
+    # 3. The same key with a DIFFERENT body is refused, not silently applied.
+    status_conflict, conflict = call(
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        agent,
+        fact(value + "-different", "A different fact under the same key."),
+        key,
+    )
+    check(
+        "the same key with a different body is refused",
+        status_conflict == 422,
+        f"status {status_conflict}: {conflict}",
+    )
+
+    # 4. Recall returns it. Synchronous, so no polling.
+    status, payload = call(
+        args.base_url, "GET", f"/v1/memories?topic={args.topic}", token, agent
+    )
+    values = payload.get("values", []) if isinstance(payload, dict) else []
+    check("recall returns 200", status == 200, f"status {status}: {payload}")
+    check(
+        "recall returns the written value",
+        any(value in str(item.get("fact", "")) for item in values),
+        f"{len(values)} value(s) returned, none containing {value}",
+    )
+
+    # 5. A sensitive topic is refused -- and refused as a no-op, not an error. This is the check
+    #    that proves the governance is actually switched on in this deployment.
+    status, payload = call(
+        args.base_url,
+        "POST",
+        "/v1/memories",
+        token,
+        agent,
+        fact("smoke", "Smoke test sensitive value.", args.sensitive_topic),
+        str(uuid.uuid4()),
+    )
+    body = payload if isinstance(payload, dict) else {}
+    check(
+        "a sensitive topic is refused as a no-op",
+        status == 200 and body.get("outcome") == "noop" and body.get("stored") == 0,
+        f"status {status}: {payload}",
+    )
+
+    # 6. An unauthenticated request is refused.
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        request = urllib.request.Request(f"{args.base_url.rstrip('/')}/v1/memories")
+        with urllib.request.urlopen(request, timeout=30) as response:
             check(
                 "unauthenticated request is refused", False, f"status {response.status}"
             )
@@ -202,10 +242,6 @@ def main() -> int:
         )
         return 1
     print(f"{GREEN}SMOKE TEST PASSED{RESET}")
-    print(
-        "\nThis proves the live path works. It does NOT check that memory content stays out of"
-    )
-    print("logs — verify that separately; see docs/runbook.md.")
     return 0
 
 

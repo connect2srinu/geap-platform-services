@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir uv==0.5.11 \
  && pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 # The vendored pattern installs as the `memory_manager` package. The domain's own extensions stay
-# a separate top-level package of the domain's choosing, named by dotted path in config/domain.yaml
+# a separate top-level package of the domain's choosing, named by dotted path in config/domain-config.yaml
 # — they are not merged into the pattern's namespace.
 COPY vendor/pattern/ ./vendor/pattern/
 COPY extensions/ ./extensions/
