@@ -22,11 +22,15 @@ Two things the inspection corrected, which the design had assumed differently:
 
 A third correction, made on 2026-10-23: ``vertexai.Client`` is deprecated in this same release in
 favour of ``agentplatform.Client``, and the two are not the same object. The memory operations move
-from ``agent_engines.memories`` to ``memory_banks.memories``, and with them the resource: a memory
-bank is now addressed as ``projects/<p>/locations/<l>/memoryBanks/<id>`` rather than borrowing an
-agent engine's ``reasoningEngines/<id>``. Every method name and keyword this adapter uses was
-compared across the two clients and is identical, so the port is the client and the resource name,
+from ``agent_engines.memories`` to ``memory_banks.memories``. Every method name and keyword this
+adapter uses was compared across the two clients and is identical, so the port is the client and
 nothing else. No version bump: both clients ship in the pinned release.
+
+The **resource is unchanged**. ``memory_banks`` is a naming change in the client, not in the API:
+the module still POSTs to ``reasoningEngines``, and a bank is still created as one Agent Engine
+carrying a ``context_spec.memory_bank_config`` — which is what the spike observed against a live
+project on 2026-10-22. The SDK's ``_get_memory_bank_id`` will *parse* a ``memoryBanks/<id>`` name,
+but nothing creates or serves one, so this adapter keeps ``reasoningEngines/<id>``.
 
 The import is deferred into the constructor so the rest of the pattern, its tests and CI do not need
 the SDK installed. It is declared as the ``provider`` extra in ``pyproject.toml``.
@@ -81,8 +85,8 @@ def _wrap(error: BaseException) -> ProviderUnavailable:
 class VertexMemoryBank:
     """A :class:`~.memory_bank.MemoryBank` backed by Vertex AI Memory Bank.
 
-    ``bank`` is the full memory bank resource name, e.g.
-    ``projects/<number>/locations/<region>/memoryBanks/<id>``.
+    ``bank`` is the full resource name of the Agent Engine carrying the memory bank, e.g.
+    ``projects/<number>/locations/<region>/reasoningEngines/<id>``.
     """
 
     def __init__(

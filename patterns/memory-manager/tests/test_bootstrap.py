@@ -226,7 +226,7 @@ def test_a_deployed_environment_uses_real_token_verification(
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "example-project")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     monkeypatch.setenv(
-        "MEMORY_BANK_ID", "projects/0/locations/us-central1/memoryBanks/0"
+        "MEMORY_BANK_ID", "projects/0/locations/us-central1/reasoningEngines/0"
     )
     try:
         deployment = build_deployment(config(), environment="production")

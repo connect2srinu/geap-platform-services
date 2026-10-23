@@ -29,7 +29,7 @@ from memory_manager.providers import (  # noqa: E402
 )
 from memory_manager.providers.vertex import VertexMemoryBank, topic_of  # noqa: E402
 
-BANK = "projects/1/locations/us-central1/memoryBanks/9"
+BANK = "projects/1/locations/us-central1/reasoningEngines/9"
 SCOPE = (("user_id", "pseudo-1"),)
 
 

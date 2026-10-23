@@ -11,16 +11,20 @@
 # So the platform controls what a domain's service account may do to a bank. It does not control
 # what their code does before it gets there. Nothing here should be described as more than that.
 #
-# The bank itself is NOT created here. Checked against the pinned provider's own schema on
-# 2026-10-23: google provider 7.45 has google_vertex_ai_reasoning_engine and its IAM resources, but
-# no resource for a memory bank, which the SDK now treats as a first-class resource of its own
-# (projects/*/locations/*/memoryBanks/*). So the bank is created out of band and passed in. That
-# gap is real and is recorded rather than hidden behind a resource that does not exist.
+# The bank itself is NOT created here. A memory bank is one Agent Engine carrying a
+# context_spec.memory_bank_config, so its resource name is reasoningEngines/<id> — verified against
+# a live project by the spike on 2026-10-22, and against the SDK's own request paths on 2026-10-23.
+# The newer agentplatform client calls the sub-client `memory_banks`, but that is a naming change
+# in the client, not a new API resource; the condition below must match what the server actually
+# names, not what the client calls it.
 #
-# Consequence for CMEK (control C-20): the bank's customer-managed encryption key can only be set
-# when the bank is created, via the SDK's CreateMemoryBankConfig.encryption_spec.kms_key_name.
-# There is no Terraform resource to express it and no way to add it to an existing bank, so until
-# the provider catches up, CMEK is a property of the out-of-band creation step, not of this module.
+# google provider 7.45 does have google_vertex_ai_reasoning_engine and its IAM resources, but they
+# do not express the memory bank configuration, so the bank is created out of band and passed in.
+#
+# Consequence for CMEK (control C-20): the customer-managed encryption key can only be set when the
+# bank is created, via CreateMemoryBankConfig.encryption_spec.kms_key_name. There is no way to add
+# one to an existing bank, so CMEK is a property of the out-of-band creation step, not of this
+# module, and it has to be decided before a domain's bank exists.
 
 locals {
   name = "${var.domain_name}-memory-bank"
@@ -40,7 +44,7 @@ resource "google_project_iam_member" "memory_manager_bank_access" {
   condition {
     title       = "${var.domain_name} bank only"
     description = "Limits this identity to its own domain's memory bank. Without the condition, one domain's service account could reach every bank in the shared project."
-    expression  = "resource.name.startsWith(\"projects/${data.google_project.platform.number}/locations/${var.region}/memoryBanks/\") && resource.name.endsWith(\"/${var.domain_name}\")"
+    expression  = "resource.name.startsWith(\"projects/${data.google_project.platform.number}/locations/${var.region}/reasoningEngines/\") && resource.name.endsWith(\"/${var.domain_name}\")"
   }
 }
 
