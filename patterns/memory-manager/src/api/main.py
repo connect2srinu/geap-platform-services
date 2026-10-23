@@ -12,14 +12,16 @@ one deployment away from being on.
 from __future__ import annotations
 
 import os
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated
 
 from extensions import CallerContext, Fact, PiiClassifier, PolicyProvider, Topic
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
+from ..observability import BudgetExhausted, MetricSink, NullMetrics, WriteBudget
 from ..policy import ReasonCode, validate_facts
 from ..providers import MemoryBank, ProviderUnavailable, encode_fact_text
 from ..providers.encoding import decode_fact_text
@@ -66,6 +68,10 @@ class Deployment:
     policy: PolicyProvider
     identity: IdentityConfig
     verifier: SubjectVerifier
+    metrics: MetricSink = field(default_factory=NullMetrics)
+    #: One instance's share of the domain's write budget. Required: a deployment with no budget
+    #: cannot bound its consumption of the shared project quota.
+    budget: WriteBudget | None = None
     auth_enabled: bool = True
 
 
@@ -86,6 +92,12 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         raise ConfigurationError(
             "auth_enabled=false is permitted only in a local environment; "
             "set ENVIRONMENT=local or enable authentication"
+        )
+
+    if deployment.budget is None:
+        raise ConfigurationError(
+            "a write budget is required: the project's Memory Bank quota is shared across every "
+            "domain, and a deployment that cannot bound its own consumption can starve another"
         )
 
     app = FastAPI(title="Memory Manager", version="0.1.0")
@@ -116,8 +128,20 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         authorization: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
         correlation_id = x_correlation_id or str(uuid.uuid4())
+        started = time.monotonic()
+
+        def done(decision: str) -> None:
+            deployment.metrics.increment(
+                "tool_invocations", operation="remember", decision=decision
+            )
+            deployment.metrics.increment(
+                "tool_latency",
+                operation="remember",
+                ms=str(int((time.monotonic() - started) * 1000)),
+            )
 
         if idempotency_key is None:
+            done("refused")
             return error_response(ErrorCode.IDEMPOTENCY_KEY_MISSING, correlation_id)
 
         resolved = _resolve(deployment, x_agent_id, authorization, correlation_id)
@@ -125,6 +149,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             return resolved
         caller, subject = resolved
         if "remember" not in caller.operations:
+            done("refused")
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
         context = _context(deployment, caller, subject, correlation_id)
@@ -138,6 +163,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             topics=deployment.topics,
             classifier=deployment.classifier,
             policy=deployment.policy,
+            metrics=deployment.metrics,
         )
 
         approved = [o for o in outcomes if o.accepted and o.fact is not None]
@@ -147,6 +173,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         ]
 
         if not approved:
+            done("noop")
             return _ok(
                 RememberResponse(outcome="noop", stored=0, results=results),
                 correlation_id,
@@ -157,6 +184,18 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             for o in approved
             if o.fact is not None
         ]
+        try:
+            assert deployment.budget is not None  # guaranteed by create_app
+            deployment.budget.take(len(texts))
+        except BudgetExhausted as exhausted:
+            deployment.metrics.increment("quota_budget_exhausted", operation="remember")
+            done("rate_limited")
+            return error_response(
+                ErrorCode.RATE_LIMITED,
+                correlation_id,
+                retry_after=exhausted.retry_after_seconds,
+            )
+
         try:
             written = deployment.bank.write(texts, context.scope)
         except ProviderUnavailable:
@@ -170,6 +209,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             context,
             bank=deployment.bank,
             classifier=deployment.classifier,
+            metrics=deployment.metrics,
         )
 
         names = list(written.memory_names)
@@ -187,6 +227,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         else:
             api_outcome = "written"
 
+        done(api_outcome)
         return _ok(
             RememberResponse(
                 outcome=api_outcome,  # type: ignore[arg-type]
@@ -205,12 +246,24 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         authorization: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
         correlation_id = x_correlation_id or str(uuid.uuid4())
+        started = time.monotonic()
+
+        def done(decision: str) -> None:
+            deployment.metrics.increment(
+                "tool_invocations", operation="recall", decision=decision
+            )
+            deployment.metrics.increment(
+                "tool_latency",
+                operation="recall",
+                ms=str(int((time.monotonic() - started) * 1000)),
+            )
 
         resolved = _resolve(deployment, x_agent_id, authorization, correlation_id)
         if isinstance(resolved, JSONResponse):
             return resolved
         caller, subject = resolved
         if "recall" not in caller.operations:
+            done("refused")
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
         context = _context(deployment, caller, subject, correlation_id)
@@ -258,6 +311,9 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
                 )
             )
 
+        if withheld:
+            deployment.metrics.increment("recall_withheld", count=str(withheld))
+        done("served")
         return _ok(RecallResponse(values=values, withheld=withheld), correlation_id)
 
     return app

@@ -123,17 +123,30 @@ idempotency store, which v0.1.0 has no room for.
 
 ## Tasks
 
-- [ ] OpenAPI contract + error catalogue
-- [ ] Topic configuration schema + example
-- [ ] `pii-classifier`, `policy-provider`, `topic-provider`, `entity-resolver` interfaces + defaults
-- [ ] Validation pipeline (topic, field, type, sensitivity, ownership, basis)
-- [ ] Memory Bank adapter: generate, retrieve, rollback, delete + fake client
-- [ ] Read-back re-classification and remediation
-- [ ] `remember` and `recall` endpoints
-- [ ] Auth: token verification, server-side scope, HMAC pseudonym
-- [ ] Unit tests, including one per security rule
-- [ ] Conformance suite
-- [ ] Reference Terraform and `pattern.yaml`
+- [x] OpenAPI contract + error catalogue
+- [x] Topic configuration schema + example
+- [x] `pii-classifier`, `policy-provider`, `topic-provider`, `entity-resolver` interfaces + defaults
+- [x] Validation pipeline (topic, field, type, sensitivity, ownership, basis)
+- [x] Memory Bank adapter: generate, retrieve, rollback, delete + fake client
+- [x] Read-back re-classification and remediation
+- [x] `remember` and `recall` endpoints
+- [x] Auth: token verification, server-side scope, HMAC pseudonym
+- [x] Unit tests, including one per security rule
+- [x] Conformance suite
+- [x] Reference Terraform and `pattern.yaml`
+- [x] Startup wiring: configuration loading, the write budget, the metrics the manifest declares
+
+The last item was not in the approved plan. Reviewing the manifest against the code found three
+gaps that no earlier task owned, and each one is a deployment that looks healthy and is not:
+
+| Gap | Consequence | VERIFIED by |
+|---|---|---|
+| 7 of 12 declared metrics emitted nowhere, two of them named by the alert policies | An alert that is configured and never fires | `tests/test_observability.py` parses `src/` for `increment` calls and compares both ways against `pattern.yaml` |
+| `quota.maxWritesPerMinute` configured, read by nothing | A domain can exhaust the quota three other domains share | `WriteBudget`; `create_app` refuses to start without one |
+| The example `Dockerfile` ran `pattern.api.main:app`, which does not exist, and nothing read the environment Terraform sets | A domain following the pattern cannot start the service | `src/bootstrap.py` + `src/asgi.py`; `tests/test_bootstrap.py` boots the shipped example config |
+
+Fixing them is a change to the pattern's startup surface, not to its architecture, contract or
+security posture: no endpoint, error code, extension point or control changed.
 
 ## Approval
 

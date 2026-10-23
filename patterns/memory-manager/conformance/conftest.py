@@ -53,6 +53,7 @@ def _reference_client() -> Any:
     )
     from src.api.auth import IdentityConfig, LocalHeaderVerifier
     from src.api.main import Caller, Deployment, create_app
+    from src.observability import WriteBudget
     from src.providers import FakeMemoryBank
 
     class AllowAll:
@@ -93,6 +94,7 @@ def _reference_client() -> Any:
             ),
         },
         bank=FakeMemoryBank(),
+        budget=WriteBudget(writes_per_minute=6000, max_instances=1),
         classifier=AllowAll(),
         policy=AllowAll(),
         identity=IdentityConfig(

@@ -13,7 +13,7 @@ PYTHON := $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo p
 UV := $(shell command -v uv 2>/dev/null)
 PYTHON_VERSION := 3.12
 
-.PHONY: help deps verify validate-design validate-manifest check-boundary lint test terraform-validate clean-venv
+.PHONY: help deps verify validate-design validate-manifest check-boundary lint typecheck test terraform-validate clean-venv
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -58,7 +58,7 @@ deps: ## Create .venv (Python 3.12) and install validation + dev dependencies
 	@echo "Done. Every target now uses $(VENV)/bin/python."
 	@echo "Activate it for ad-hoc commands with:  source $(VENV)/bin/activate"
 
-verify: validate-design validate-manifest check-boundary lint test ## Run every available check
+verify: validate-design validate-manifest check-boundary lint typecheck test ## Run every available check
 
 validate-design: ## Validate SDLC design artifacts
 	@$(PYTHON) scripts/validate_design_artifacts.py
@@ -70,6 +70,17 @@ check-boundary: ## Check platform/domain boundary and layering rules
 	@$(PYTHON) scripts/check_platform_domain_boundary.py
 
 # Runs the same two checks as the Python CI lint job, so a local pass means a CI pass.
+typecheck: ## Type-check pattern source (reports unavailable if mypy is absent)
+	@if [ -x $(VENV)/bin/mypy ]; then mypy=$(VENV)/bin/mypy; \
+	elif command -v mypy >/dev/null 2>&1; then mypy=mypy; \
+	else echo "unavailable: mypy is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
+	dirs=""; \
+	for d in patterns/*/src patterns/*/extensions; do \
+	  if [ -d "$$d" ] && find "$$d" -name '*.py' -print -quit | grep -q .; then dirs="$$dirs $$d"; fi; \
+	done; \
+	if [ -z "$$dirs" ]; then echo "No pattern source present yet — skipped, not passed."; exit 0; fi; \
+	$$mypy --strict $$dirs
+
 lint: ## Lint Python (reports unavailable if ruff is absent)
 	@if [ -x $(VENV)/bin/ruff ]; then ruff=$(VENV)/bin/ruff; \
 	elif command -v ruff >/dev/null 2>&1; then ruff=ruff; \

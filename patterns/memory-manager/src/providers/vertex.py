@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..observability import MetricSink, NullMetrics
 from .encoding import decode_fact_text
 from .memory_bank import (
     MAX_FACTS_PER_WRITE,
@@ -77,9 +78,16 @@ class VertexMemoryBank:
     """
 
     def __init__(
-        self, *, project: str, location: str, bank: str, client: Any | None = None
+        self,
+        *,
+        project: str,
+        location: str,
+        bank: str,
+        client: Any | None = None,
+        metrics: MetricSink | None = None,
     ) -> None:
         self._bank = bank
+        self._metrics = metrics or NullMetrics()
         if client is not None:
             self._memories = client
             return
@@ -105,6 +113,7 @@ class VertexMemoryBank:
         if not facts:
             return WriteResult(outcome=WriteOutcome.APPLIED)
 
+        self._metrics.increment("provider_requests", operation="generate")
         try:
             operation = self._memories.generate(
                 name=self._bank,
@@ -114,7 +123,16 @@ class VertexMemoryBank:
                 scope=dict(scope),
             )
         except Exception as exc:  # noqa: BLE001 - every provider failure becomes ours
-            raise _wrap(exc) from exc
+            wrapped = _wrap(exc)
+            if isinstance(wrapped, ProviderThrottled):
+                self._metrics.increment("provider_throttled", operation="generate")
+            raise wrapped from exc
+
+        # Per-domain attribution. The project quota is shared, so without this a contention
+        # incident shows writes failing but not whose traffic caused it.
+        self._metrics.increment(
+            "quota_consumed", operation="generate", facts=str(len(facts))
+        )
 
         generated = (
             getattr(getattr(operation, "response", None), "generated_memories", None)
@@ -142,6 +160,7 @@ class VertexMemoryBank:
         The SDK's iterator handles paging.
         """
         wanted = dict(scope)
+        self._metrics.increment("provider_requests", operation="list")
         try:
             found = [
                 self._to_stored(m)

@@ -26,6 +26,7 @@ from extensions import (  # noqa: E402
 )
 from src.api.auth import IdentityConfig, LocalHeaderVerifier  # noqa: E402
 from src.api.main import Caller, ConfigurationError, Deployment, create_app  # noqa: E402
+from src.observability import WriteBudget  # noqa: E402
 from src.providers import FakeMemoryBank  # noqa: E402
 
 TOPICS = {
@@ -92,6 +93,8 @@ def deployment(**kw: object) -> Deployment:
             subject_hmac_key="a-test-only-hmac-key",
         ),
         "verifier": LocalHeaderVerifier(environment="local"),
+        # Generous by default: budget exhaustion is its own test, not a trap for every other one.
+        "budget": WriteBudget(writes_per_minute=6000, max_instances=1),
         "auth_enabled": False,
     }
     base.update(kw)
@@ -495,3 +498,114 @@ def test_the_scope_is_namespaced_by_domain() -> None:
     c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
     stored = next(iter(bank._memories.values()))  # type: ignore[attr-defined]
     assert dict(stored.scope)["organization_id"] == "example-domain"
+
+
+# --- the write budget -----------------------------------------------------------------
+#
+# The platform project's Memory Bank quota is shared by every domain, so an instance that cannot
+# bound its own consumption can starve a domain that did nothing wrong.
+
+
+class RecordingMetrics:
+    """Records emissions so a test can assert the service said what happened."""
+
+    def __init__(self) -> None:
+        self.emitted: list[tuple[str, dict[str, str]]] = []
+
+    def increment(self, metric: str, **labels: str) -> None:
+        self.emitted.append((metric, labels))
+
+    def names(self) -> list[str]:
+        return [name for name, _ in self.emitted]
+
+
+def test_create_app_refuses_to_start_without_a_write_budget() -> None:
+    with pytest.raises(ConfigurationError, match="write budget is required"):
+        create_app(deployment(budget=None), environment="local")
+
+
+def test_a_write_past_the_budget_is_refused_with_429_and_retry_after() -> None:
+    c = client(budget=WriteBudget(writes_per_minute=2, max_instances=1))
+    for i in range(2):
+        accepted = c.post(
+            "/v1/memories",
+            json={"facts": [fact(value=f"Brand {i}")]},
+            headers={**HEADERS, "Idempotency-Key": f"key-{i:07d}"},
+        )
+        assert accepted.status_code == 200
+
+    refused = c.post(
+        "/v1/memories",
+        json={"facts": [fact(value="Brand 3")]},
+        headers={**HEADERS, "Idempotency-Key": "key-0000009"},
+    )
+    assert refused.status_code == 429
+    assert refused.json()["code"] == "RATE_LIMITED"
+    assert refused.json()["retryable"] is True
+    assert int(refused.headers["Retry-After"]) >= 1
+
+
+def test_budget_exhaustion_is_reported_as_a_metric() -> None:
+    metrics = RecordingMetrics()
+    c = client(
+        budget=WriteBudget(writes_per_minute=1, max_instances=1), metrics=metrics
+    )
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    c.post(
+        "/v1/memories",
+        json={"facts": [fact(value="Other")]},
+        headers={**HEADERS, "Idempotency-Key": "key-0000002"},
+    )
+    assert "quota_budget_exhausted" in metrics.names()
+
+
+def test_budget_is_spent_per_fact_not_per_request() -> None:
+    """Three facts in one request consume three units: the provider is charged per fact."""
+    c = client(budget=WriteBudget(writes_per_minute=4, max_instances=1))
+    first = c.post(
+        "/v1/memories",
+        json={"facts": [fact(value=f"Brand {i}") for i in range(3)]},
+        headers=HEADERS,
+    )
+    assert first.status_code == 200
+
+    second = c.post(
+        "/v1/memories",
+        json={"facts": [fact(value=f"Later {i}") for i in range(2)]},
+        headers={**HEADERS, "Idempotency-Key": "key-0000002"},
+    )
+    assert second.status_code == 429
+
+
+def test_budget_refusal_happens_before_the_provider_is_called() -> None:
+    """Refusing after the write would spend the quota the budget exists to protect."""
+    bank = FakeMemoryBank()
+    writes = 0
+    inner = bank.write
+
+    def counting_write(facts: list[str], scope: str) -> object:
+        nonlocal writes
+        writes += 1
+        return inner(facts, scope)
+
+    bank.write = counting_write  # type: ignore[method-assign]
+    c = client(bank=bank, budget=WriteBudget(writes_per_minute=1, max_instances=1))
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    assert writes == 1
+
+    refused = c.post(
+        "/v1/memories",
+        json={"facts": [fact(value="Other")]},
+        headers={**HEADERS, "Idempotency-Key": "key-0000002"},
+    )
+    assert refused.status_code == 429
+    assert writes == 1
+
+
+def test_recall_is_not_charged_to_the_write_budget() -> None:
+    """A read does not consume the write quota; charging it would throttle reads for no reason."""
+    c = client(budget=WriteBudget(writes_per_minute=1, max_instances=1))
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    for _ in range(5):
+        read = c.get("/v1/memories", headers=HEADERS)
+        assert read.status_code == 200
