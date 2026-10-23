@@ -236,10 +236,19 @@ Three calls, in a second terminal. Both headers are required — `Authorization`
 user's** token, which is what the memory scope is derived from, and `X-Agent-ID` is your
 registered caller.
 
+Keep the token in a variable rather than typing it into each command; a real one does not belong
+in your shell history. Locally the verifier treats the bearer value as the subject, so any string
+works:
+
+```bash
+export END_USER_TOKEN=end-user-1
+export AGENT=example-writer-agent
+```
+
 **Allowed:**
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: example-writer-agent' -H 'Authorization: Bearer end-user-1' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Prefers the organic brand Horizon."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Prefers the organic brand Horizon."}]}'
 ```
 
 `{"outcome":"written","stored":1,...,"reasonCode":"ACCEPTED"}`
@@ -247,7 +256,7 @@ curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -
 **Blocked topic** — a no-op, not an error. The request succeeded; the policy said no:
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: example-writer-agent' -H 'Authorization: Bearer end-user-1' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_sensitive_topic","field":"detail","value":"x","fact":"Something sensitive."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_sensitive_topic","field":"detail","value":"x","fact":"Something sensitive."}]}'
 ```
 
 `{"outcome":"noop","stored":0,...,"reasonCode":"TOPIC_DISABLED"}`
@@ -255,7 +264,7 @@ curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -
 **The one that matters** — an allowed topic carrying prohibited content:
 
 ```bash
-curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H 'X-Agent-ID: example-writer-agent' -H 'Authorization: Bearer end-user-1' -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Takes 20mg of something and prefers Horizon."}]}'
+curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN" -H "Idempotency-Key: $(uuidgen)" -d '{"facts":[{"topic":"example_preference","field":"preference","value":"Horizon","fact":"Takes 20mg of something and prefers Horizon."}]}'
 ```
 
 `{"outcome":"noop","stored":0,...,"reasonCode":"VALUE_PROHIBITED"}`
@@ -265,7 +274,7 @@ curl -s -X POST localhost:8080/v1/memories -H 'Content-Type: application/json' -
 Read it back:
 
 ```bash
-curl -s "localhost:8080/v1/memories?topic=example_preference" -H 'X-Agent-ID: example-writer-agent' -H 'Authorization: Bearer end-user-1'
+curl -s "localhost:8080/v1/memories?topic=example_preference" -H "X-Agent-ID: $AGENT" -H "Authorization: Bearer $END_USER_TOKEN"
 ```
 
 Only the first fact comes back. `withheld: 0` — nothing was dropped on the way out.
@@ -273,7 +282,7 @@ Only the first fact comes back. `withheld: 0` — nothing was dropped on the way
 Prove nothing leaked:
 
 ```bash
-grep -riE "Horizon|20mg|end-user-1" server.log || echo "clean - no payload, no raw subject in logs"
+grep -riE "Horizon|20mg|$END_USER_TOKEN" server.log || echo "clean - no payload, no raw subject in logs"
 ```
 
 `Horizon` appearing is also a finding — it is memory content.

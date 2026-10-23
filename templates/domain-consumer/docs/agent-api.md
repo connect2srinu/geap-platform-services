@@ -36,7 +36,7 @@ memory by asking for it.
 
 ```http
 POST /v1/memories
-Idempotency-Key: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+Idempotency-Key: <a UUID you generate per logical write>
 ```
 
 ```json
