@@ -4,7 +4,7 @@ kind: Pattern
 metadata:
   name: memory-manager
   version: 0.1.0
-  description: Domain-owned governed memory tool API over a managed Memory Bank, with policy, RBAC, async write processing and rate-limit handling.
+  description: Domain-owned governed memory tool API over a managed Memory Bank, with topic policy, read-back verification and per-domain quota budgeting.
   maintainer:
     team: agent-platform
     contact: <team-contact-placeholder>
@@ -51,6 +51,13 @@ spec:
       failureMode: deny
       description: Resolves caller role and scope to a permit/deny decision. May refine a platform decision, never override a platform denial.
 
+    - id: topic-provider
+      interface: patterns/memory-manager/extensions/topic_provider.py
+      required: false
+      default: yaml-config
+      failureMode: deny
+      description: Supplies the domain's topic vocabulary. The default reads the validated YAML configuration; a domain needing runtime topic changes supplies its own. A provider that cannot answer leaves every topic unknown, and an unknown topic is rejected.
+
     - id: entity-resolver
       interface: patterns/memory-manager/extensions/entity_resolver.py
       required: false
@@ -58,33 +65,23 @@ spec:
       failureMode: skip
       description: Resolves an entity reference to a domain-internal identifier. Domain identity resolution; the platform default is a no-op pass-through.
 
-    - id: fact-curator
-      interface: patterns/memory-manager/extensions/fact_curator.py
-      required: false
-      default: last-write-wins
-      failureMode: skip
-      description: Merges the same fact arriving from two sources. Domain merge policy.
 
   secrets:
-    - name: MEMORY_BANK_CREDENTIALS
-      purpose: Service credentials for the managed Memory Bank, resolved from Secret Manager at runtime.
-      required: false
+    - name: SUBJECT_HMAC_KEY
+      purpose: Pseudonymises end-user subjects before they reach a scope, a log, a metric or an audit event. Without it the service refuses to start, because a missing key would silently give every user the same pseudonym.
+      required: true
 
   cloudPermissions:
     google:
       - component: api
         roles:
-          - roles/pubsub.publisher
+          - logging.logEntries.create
+          - monitoring.timeSeries.create
+          - cloudtrace.traces.patch
           - roles/secretmanager.secretAccessor
-          - roles/logging.logWriter
-          - roles/cloudtrace.agent
-      - component: worker
-        roles:
-          - roles/pubsub.subscriber
-          - roles/secretmanager.secretAccessor
-          - roles/logging.logWriter
-          - roles/cloudtrace.agent
-          - roles/monitoring.metricWriter
+        # Granted as a CUSTOM role, not a predefined one: the predefined Vertex AI roles carry far
+        # more than this service needs. Memory bank access itself is granted by platform-owned
+        # Terraform, to this identity only, with an IAM Condition limiting it to the domain's bank.
 
   infrastructure:
     # The one control that survives a domain forking this source. See standards/pattern-contract.md.
@@ -111,14 +108,15 @@ spec:
     requiredMetrics:
       - tool_invocations
       - tool_latency
-      - queue_depth
-      - queue_age_oldest
-      - retry_attempts
-      - dead_letter_depth
+      - facts_evaluated
+      - policy_denials
+      - verification_outcomes
+      - remediations
+      - recall_withheld
       - provider_requests
       - provider_throttled
       - quota_consumed
-      - policy_denials
+      - quota_budget_exhausted
       - extension_errors
     requiredAuditEvents:
       - memory_write
@@ -149,7 +147,8 @@ spec:
   compatibility:
     terraform: ">=1.9"
     google: "~>7.45"
-    memoryBankSdk: "<to be pinned during design>"
+    memoryBankSdk: "google-cloud-aiplatform[agent_engines]==2.3.0"
+    python: ">=3.12"
 
   upgrade:
     from: []

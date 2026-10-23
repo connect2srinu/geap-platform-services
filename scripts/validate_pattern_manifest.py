@@ -90,6 +90,8 @@ def validate_pattern(folder: Path, schema: dict, report: Report) -> None:
         referenced.append((f"configuration.examples[{i}]", ex))
     for key in ("platformOwned", "domainOwned"):
         referenced.append((f"infrastructure.{key}", spec["infrastructure"][key]))
+    for ep in spec.get("extensionPoints", []):
+        referenced.append((f"extensionPoints[{ep['id']}].interface", ep["interface"]))
     referenced.append(("build.dockerfile", spec["build"]["dockerfile"]))
     referenced.append(("tests.unit", spec["tests"]["unit"]))
     referenced.append(("tests.conformance", spec["tests"]["conformance"]))
