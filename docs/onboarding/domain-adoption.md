@@ -8,7 +8,7 @@ For a domain team adopting a published platform pattern.
 |---|---|---|
 | 1 | Discover an approved pattern | You |
 | 2 | Select a published version | You |
-| 3 | Generate a consumer project from the template | You (`domain-onboard`) |
+| 3 | Create a consumer project from the template | You |
 | 4 | Apply domain configuration | You |
 | 5 | Implement permitted extensions | You |
 | 6 | Run the pattern conformance tests | **You, in your CI** |
@@ -24,7 +24,7 @@ allocation. Everything else is yours.
 ## 1–2. Discover and select
 
 ```bash
-git tag -l 'memory-manager/v*' | sort -V
+git tag -l 'memory-manager/v*' --sort=v:refname
 ```
 
 Check `metadata.status` in the release's `pattern.yaml`. **Do not adopt a `proposed` pattern for
@@ -32,18 +32,21 @@ production** — its design is not approved and its contracts may change.
 
 **Pin the version.** "Latest" is not a dependency.
 
-## 3. Generate the project
+## 3. Create the project
 
 ```bash
-/domain-onboard
+cp -R templates/domain-consumer ../<domain>-memory-manager
 ```
 
-Produces a domain-owned project with configuration, extension stubs, a Dockerfile, Terraform, a CI/CD
-pipeline, a runbook, agent-facing API documentation and a role-request template.
+A domain-owned project with a pinned pattern lock, a Dockerfile, a runbook, agent-facing API
+documentation, a role-request template, and the vendoring and smoke-test scripts. The commands, from
+filling in the lock to the first commit, are in [demo.md](demo.md#5-adopt-a-version-domain-team).
 
 ## 4. Configure
 
-`config/domain-config.yaml`, validated against the pattern's schema **at startup** — the service
+Start from the pattern's `config/example.domain.yaml`, which passes the schema. The template's
+`config/domain-config.yaml` predates the implementation and does not yet. Configuration is validated
+against the pattern's schema **at startup** — the service
 refuses to start on invalid configuration rather than defaulting. Never a default that weakens a
 security control.
 
@@ -96,7 +99,7 @@ or PII in logs**.
 
 ## 11. Operate and upgrade
 
-Runbook: `docs/runbook.md`. Upgrades: `/pattern-upgrade`.
+Runbook: `docs/runbook.md`. Upgrades: `docs/upgrade.md` in your project.
 
 ## What you may change, and what you must not
 

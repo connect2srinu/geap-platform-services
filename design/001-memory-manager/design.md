@@ -52,7 +52,7 @@ the gap.
 
 **Live verification of the implementation, 2026-10-23.** Everything above was probe code against
 the SDK. `spike/verify_live.py` drives the *service* — endpoints, policy pipeline, adapter,
-read-back verification — against a real bank (`geap-probe-tier1-main`, project `e2eml-222003`).
+read-back verification — against a real bank (`geap-probe-tier1-main`, in the maintainer's sandbox project).
 **19/19 checks passed:** write round trip 2.1 s, `ACCEPTED` with a memory id, read-back
 verification clean, recall returning the fact with its topic and field prefix decoded and nothing
 withheld, a sensitive topic refused before reaching the provider, a conflicting second write

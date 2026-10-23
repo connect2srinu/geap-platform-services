@@ -2,6 +2,9 @@
 
 ## Setup
 
+First time on a machine: [getting-started.md](getting-started.md), from installing the tools to the
+service answering on `localhost`. After that:
+
 ```bash
 make deps
 ```
@@ -10,15 +13,16 @@ make deps
 make verify
 ```
 
-`make deps` creates a project `.venv` on Python 3.12 — on Debian, Ubuntu and WSL the system Python is
-externally managed (PEP 668) and a bare `pip install` fails. Never use `--break-system-packages`.
+`make deps` creates a project `.venv` on Python 3.12. Never `pip install` into the system Python,
+and never use `--break-system-packages`.
 
 `make verify` reports `unavailable` rather than silently skipping when a tool is missing. **Unavailable
 is not a pass** — treat it as a blind spot.
 
 ## The process
 
-For a guided walkthrough you can run in front of people, see [demo.md](demo.md).
+For the whole lifecycle — build, release, test as a client, adopt — with every gate, see
+[demo.md](demo.md). It is also a script you can run in front of people.
 
 Two documents, two gates. [CLAUDE.md](../../CLAUDE.md) has the rules; this is the mechanics.
 

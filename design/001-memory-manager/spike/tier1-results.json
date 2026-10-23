@@ -12,7 +12,7 @@
       "evidence": [
         "first write: actions ['CREATED', 'CREATED']",
         "stored facts equal the input exactly (no extraction): True",
-        "conflicting second write (size medium -> large): actions {'projects/<project>/locations/us-central1/reasoningEngines/2989084207638118400/memories/4546392276326154240': 'UPDATED'}",
+        "conflicting second write (size medium -> large): actions {'projects/<project>/locations/us-central1/reasoningEngines/<bank>/memories/4546392276326154240': 'UPDATED'}",
         "consolidation acted on a first-write memory: True",
         "consolidation is model-judged: FAIL here means not observed for this input"
       ]
@@ -31,7 +31,7 @@
       "title": "get immediately after the operation reflects the consolidated content",
       "evidence": [
         "read back 1 memory(ies) immediately",
-        "projects/<project>/locations/us-central1/reasoningEngines/2989084207638118400/memories/4546392276326154240: the operation result carries no fact; get succeeded"
+        "projects/<project>/locations/us-central1/reasoningEngines/<bank>/memories/4546392276326154240: the operation result carries no fact; get succeeded"
       ]
     },
     {
