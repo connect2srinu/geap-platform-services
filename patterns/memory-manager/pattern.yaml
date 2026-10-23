@@ -32,34 +32,34 @@ spec:
       status: planned
 
   configuration:
-    schema: patterns/memory-manager/config/config.schema.json
+    schema: patterns/memory-manager/src/memory_manager/config.schema.json
     examples:
       - patterns/memory-manager/config/example.domain.yaml
 
   extensionPoints:
     - id: pii-classifier
-      interface: patterns/memory-manager/extensions/pii_classifier.py
+      interface: patterns/memory-manager/src/memory_manager/extensions/pii_classifier.py
       required: true
       default: deny-all
       failureMode: deny
       description: Classifies a candidate value before persistence. The OBLIGATION to classify is platform; the vocabulary is domain. Defaults to deny-all so that an unconfigured deployment stores nothing.
 
     - id: policy-provider
-      interface: patterns/memory-manager/extensions/policy_provider.py
+      interface: patterns/memory-manager/src/memory_manager/extensions/policy_provider.py
       required: true
       default: deny-all
       failureMode: deny
       description: Resolves caller role and scope to a permit/deny decision. May refine a platform decision, never override a platform denial.
 
     - id: topic-provider
-      interface: patterns/memory-manager/extensions/topic_provider.py
+      interface: patterns/memory-manager/src/memory_manager/extensions/topic_provider.py
       required: false
       default: yaml-config
       failureMode: deny
       description: Supplies the domain's topic vocabulary. The default reads the validated YAML configuration; a domain needing runtime topic changes supplies its own. A provider that cannot answer leaves every topic unknown, and an unknown topic is rejected.
 
     - id: entity-resolver
-      interface: patterns/memory-manager/extensions/entity_resolver.py
+      interface: patterns/memory-manager/src/memory_manager/extensions/entity_resolver.py
       required: false
       default: noop
       failureMode: skip

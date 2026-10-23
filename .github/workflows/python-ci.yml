@@ -43,7 +43,7 @@ jobs:
             # import as missing and the real errors are buried. Run from inside the pattern so its
             # own mypy configuration applies.
             python -m pip install -q -e "$pattern"
-            ( cd "$pattern" && mypy --strict src extensions )
+            ( cd "$pattern" && mypy --strict src )
             checked=$((checked + 1))
           done
           if [ "$checked" -eq 0 ]; then

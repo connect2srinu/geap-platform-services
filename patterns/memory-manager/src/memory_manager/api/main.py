@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Annotated
 
-from extensions import CallerContext, Fact, PiiClassifier, PolicyProvider, Topic
+from ..extensions import CallerContext, Fact, PiiClassifier, PolicyProvider, Topic
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 

@@ -19,9 +19,9 @@ import pytest
 import yaml
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from src.observability import (  # noqa: E402
+from memory_manager.observability import (  # noqa: E402
     METRICS,
     BudgetExhausted,
     LoggingMetrics,

@@ -13,9 +13,9 @@ from pathlib import Path
 import pytest
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from src.providers import (  # noqa: E402
+from memory_manager.providers import (  # noqa: E402
     FakeMemoryBank,
     MemoryAction,
     MemoryBank,
@@ -25,7 +25,7 @@ from src.providers import (  # noqa: E402
     decode_fact_text,
     encode_fact_text,
 )
-from src.providers.memory_bank import MAX_FACTS_PER_WRITE  # noqa: E402
+from memory_manager.providers.memory_bank import MAX_FACTS_PER_WRITE  # noqa: E402
 
 SCOPE = (("user_id", "pseudo-1"),)
 OTHER_SCOPE = (("user_id", "pseudo-2"),)

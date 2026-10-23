@@ -18,9 +18,9 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from src.api.auth import (  # noqa: E402
+from memory_manager.api.auth import (  # noqa: E402
     AuthError,
     IdentityConfig,
     JwtSubjectVerifier,

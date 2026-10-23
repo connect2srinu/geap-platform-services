@@ -29,13 +29,13 @@ spec:
       status: active
 
   configuration:
-    schema: patterns/<pattern-name>/config/config.schema.json
+    schema: patterns/<pattern-name>/src/<pattern_name>/config.schema.json
     examples:
       - patterns/<pattern-name>/config/example.domain.yaml
 
   extensionPoints: []
     # - id: <extension-id>
-    #   interface: patterns/<pattern-name>/extensions/<name>.py
+    #   interface: patterns/<pattern-name>/src/<pattern_name>/extensions/<name>.py
     #   required: false
     #   default: noop
     #   failureMode: deny     # security-relevant extensions MUST be 'deny'

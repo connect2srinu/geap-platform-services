@@ -38,11 +38,11 @@ SENSITIVE_TOPIC = os.environ.get("CONFORMANCE_SENSITIVE_TOPIC", "health_conditio
 def _reference_client() -> Any:
     """Start the reference implementation in process, with the fake bank."""
     pattern = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(pattern))
+    sys.path.insert(0, str(pattern / "src"))
 
     from fastapi.testclient import TestClient
 
-    from extensions import (
+    from memory_manager.extensions import (
         CallerContext,
         Classification,
         ClassificationResult,
@@ -51,10 +51,10 @@ def _reference_client() -> Any:
         Topic,
         TopicField,
     )
-    from src.api.auth import IdentityConfig, LocalHeaderVerifier
-    from src.api.main import Caller, Deployment, create_app
-    from src.observability import WriteBudget
-    from src.providers import FakeMemoryBank
+    from memory_manager.api.auth import IdentityConfig, LocalHeaderVerifier
+    from memory_manager.api.main import Caller, Deployment, create_app
+    from memory_manager.observability import WriteBudget
+    from memory_manager.providers import FakeMemoryBank
 
     class AllowAll:
         def classify(self, fact: Fact, caller: CallerContext) -> ClassificationResult:

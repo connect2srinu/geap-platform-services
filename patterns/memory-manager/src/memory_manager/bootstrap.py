@@ -26,7 +26,7 @@ from typing import Any
 import jsonschema
 import yaml
 
-from extensions import (
+from .extensions import (
     DenyAllClassifier,
     DenyAllPolicyProvider,
     PiiClassifier,
@@ -39,8 +39,10 @@ from .api.main import Caller, ConfigurationError, Deployment
 from .observability import LoggingMetrics, WriteBudget
 from .providers import FakeMemoryBank, MemoryBank
 
-#: The schema lives beside the pattern, not beside the domain's copy of the config.
-SCHEMA_PATH = Path(__file__).resolve().parent.parent / "config" / "config.schema.json"
+#: Package data, not a repository path. The schema is the *pattern's* artifact — the domain's
+#: config/ holds only their own values — so it has to travel inside the wheel. Keeping it outside
+#: the package meant an installed pattern could not find it, which only a container would notice.
+SCHEMA_PATH = Path(__file__).resolve().parent / "config.schema.json"
 
 
 def load_config(path: str | Path) -> dict[str, Any]:

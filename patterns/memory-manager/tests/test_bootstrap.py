@@ -16,19 +16,22 @@ import pytest
 import yaml
 
 PATTERN = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PATTERN / "src"))
+# Also the pattern root: the extension-loading tests name classes in this module by dotted path,
+# which is how a domain names its own.
 sys.path.insert(0, str(PATTERN))
 
-from extensions import (  # noqa: E402
+from memory_manager.extensions import (  # noqa: E402
     CallerContext,
     ClassificationResult,
     DenyAllClassifier,
     DenyAllPolicyProvider,
     Fact,
 )
-from src.api.auth import JwtSubjectVerifier, LocalHeaderVerifier  # noqa: E402
-from src.api.main import ConfigurationError  # noqa: E402
-from src.bootstrap import build_deployment, load_config  # noqa: E402
-from src.providers import FakeMemoryBank  # noqa: E402
+from memory_manager.api.auth import JwtSubjectVerifier, LocalHeaderVerifier  # noqa: E402
+from memory_manager.api.main import ConfigurationError  # noqa: E402
+from memory_manager.bootstrap import build_deployment, load_config  # noqa: E402
+from memory_manager.providers import FakeMemoryBank  # noqa: E402
 
 EXAMPLE = PATTERN / "config" / "example.domain.yaml"
 HMAC_KEY = "a-test-only-hmac-key"
@@ -243,7 +246,7 @@ def test_the_example_configuration_produces_a_service_that_serves() -> None:
     """End to end through the entry point the container actually runs."""
     from fastapi.testclient import TestClient
 
-    from src.api.main import create_app
+    from memory_manager.api.main import create_app
 
     app = create_app(
         build_deployment(config(), environment="local"), environment="local"

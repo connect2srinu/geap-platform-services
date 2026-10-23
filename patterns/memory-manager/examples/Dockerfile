@@ -21,7 +21,9 @@ RUN pip install --no-cache-dir uv==0.5.11 \
  && uv export --frozen --no-dev --format requirements-txt > /tmp/requirements.txt \
  && pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
-# Vendored pattern source plus the domain's own extensions and configuration.
+# The vendored pattern installs as the `memory_manager` package. The domain's own extensions stay
+# a separate top-level package of the domain's choosing, named by dotted path in config/domain.yaml
+# — they are not merged into the pattern's namespace.
 COPY vendor/pattern/ ./vendor/pattern/
 COPY extensions/ ./extensions/
 RUN pip install --no-cache-dir --prefix=/install ./vendor/pattern
@@ -54,4 +56,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 
 # The factory form, so a configuration error is reported as one rather than as an import
 # traceback from inside uvicorn's loader.
-CMD ["python3", "-m", "uvicorn", "src.asgi:create", "--factory", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python3", "-m", "uvicorn", "memory_manager.asgi:create", "--factory", "--host", "0.0.0.0", "--port", "8080"]

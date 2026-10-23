@@ -37,19 +37,21 @@ provider = [
 ]
 
 
-# Both directories ship: `src` is the pattern, `extensions` carries the fail-closed defaults a
-# domain replaces with its own. The import names are the same installed as in the repository, so
-# the tests exercise the layout the container runs.
+# The src layout: `src/` is the build root, not a package. Everything ships under one distinctly
+# named top-level package, so a domain can install this pattern alongside another without the two
+# fighting over a directory called `src` in site-packages.
+#
+# `memory_manager.extensions` carries the pattern's fail-closed defaults. A domain's own extensions
+# live in the domain's own package and are named by dotted path in configuration; they do not go
+# here.
 [tool.setuptools]
-packages = [
-  "src",
-  "src.api",
-  "src.policy",
-  "src.providers",
-  "src.worker",
-  "src.observability",
-  "extensions",
-]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+memory_manager = ["config.schema.json"]
 
 [tool.mypy]
 strict = true

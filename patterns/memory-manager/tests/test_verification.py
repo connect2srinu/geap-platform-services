@@ -11,11 +11,15 @@ from pathlib import Path
 
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from extensions import CallerContext, ClassificationResult, Fact  # noqa: E402
-from src.providers import FakeMemoryBank, ProviderUnavailable, encode_fact_text  # noqa: E402
-from src.worker import Remediation, VerificationOutcome, verify_write  # noqa: E402
+from memory_manager.extensions import CallerContext, ClassificationResult, Fact  # noqa: E402
+from memory_manager.providers import (  # noqa: E402
+    FakeMemoryBank,
+    ProviderUnavailable,
+    encode_fact_text,
+)
+from memory_manager.worker import Remediation, VerificationOutcome, verify_write  # noqa: E402
 
 SCOPE = (("user_id", "pseudo-1"),)
 CALLER = CallerContext(

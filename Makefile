@@ -79,7 +79,7 @@ typecheck: ## Type-check pattern source (reports unavailable if mypy is absent)
 	  find "$$pattern/src" -name '*.py' -print -quit 2>/dev/null | grep -q . || continue; \
 	  mypy_abs=$$(cd $$(dirname $$mypy) 2>/dev/null && pwd)/$$(basename $$mypy); \
 	  [ -x "$$mypy_abs" ] || mypy_abs=$$mypy; \
-	  ( cd "$$pattern" && "$$mypy_abs" --strict src extensions ) || exit 1; \
+	  ( cd "$$pattern" && "$$mypy_abs" --strict src ) || exit 1; \
 	  checked=$$((checked + 1)); \
 	done; \
 	if [ "$$checked" -eq 0 ]; then echo "No pattern source present yet — skipped, not passed."; fi

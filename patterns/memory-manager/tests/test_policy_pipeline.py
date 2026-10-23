@@ -14,9 +14,9 @@ import pytest
 import yaml
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from extensions import (  # noqa: E402
+from memory_manager.extensions import (  # noqa: E402
     CallerContext,
     Classification,
     ClassificationResult,
@@ -28,7 +28,12 @@ from extensions import (  # noqa: E402
     Topic,
     TopicField,
 )
-from src.policy import CHECK_ORDER, ReasonCode, ValidationPipeline, validate_facts  # noqa: E402
+from memory_manager.policy import (  # noqa: E402
+    CHECK_ORDER,
+    ReasonCode,
+    ValidationPipeline,
+    validate_facts,
+)
 
 BRANDS = Topic(
     id="preferred_brands",
@@ -391,7 +396,7 @@ def test_reason_codes_match_the_contract_exactly() -> None:
 
 def test_every_reason_code_is_reachable_from_the_pipeline() -> None:
     """A published code no path can produce is a lie in the contract."""
-    source = (PATTERN / "src" / "policy" / "pipeline.py").read_text()
+    source = (PATTERN / "src" / "memory_manager" / "policy" / "pipeline.py").read_text()
     for code in ReasonCode:
         assert re.search(
             rf"ReasonCode\.{code.name}\b", source

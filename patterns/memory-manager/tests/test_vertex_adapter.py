@@ -18,16 +18,16 @@ from typing import Any
 import pytest
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from src.providers import (  # noqa: E402
+from memory_manager.providers import (  # noqa: E402
     MemoryAction,
     MemoryBank,
     ProviderThrottled,
     ProviderUnavailable,
     encode_fact_text,
 )
-from src.providers.vertex import VertexMemoryBank, topic_of  # noqa: E402
+from memory_manager.providers.vertex import VertexMemoryBank, topic_of  # noqa: E402
 
 BANK = "projects/1/locations/us-central1/memoryBanks/9"
 SCOPE = (("user_id", "pseudo-1"),)

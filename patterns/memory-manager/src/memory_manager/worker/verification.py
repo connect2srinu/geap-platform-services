@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Protocol
 
-from extensions import CallerContext, Fact, PiiClassifier
+from ..extensions import CallerContext, Fact, PiiClassifier
 
 from ..providers.encoding import decode_fact_text
 from ..providers.memory_bank import MemoryBank, ProviderUnavailable

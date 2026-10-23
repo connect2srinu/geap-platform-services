@@ -13,9 +13,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from extensions import (  # noqa: E402
+from memory_manager.extensions import (  # noqa: E402
     CallerContext,
     Classification,
     ClassificationResult,
@@ -24,10 +24,10 @@ from extensions import (  # noqa: E402
     Topic,
     TopicField,
 )
-from src.api.auth import IdentityConfig, LocalHeaderVerifier  # noqa: E402
-from src.api.main import Caller, ConfigurationError, Deployment, create_app  # noqa: E402
-from src.observability import WriteBudget  # noqa: E402
-from src.providers import FakeMemoryBank  # noqa: E402
+from memory_manager.api.auth import IdentityConfig, LocalHeaderVerifier  # noqa: E402
+from memory_manager.api.main import Caller, ConfigurationError, Deployment, create_app  # noqa: E402
+from memory_manager.observability import WriteBudget  # noqa: E402
+from memory_manager.providers import FakeMemoryBank  # noqa: E402
 
 TOPICS = {
     "preferred_brands": Topic(
@@ -384,7 +384,7 @@ def test_readyz_fails_when_the_bank_is_unreachable() -> None:
 
     class Unreachable(FakeMemoryBank):
         def retrieve(self, scope: object) -> list[object]:  # type: ignore[override]
-            from src.providers import ProviderUnavailable
+            from memory_manager.providers import ProviderUnavailable
 
             raise ProviderUnavailable("no binding")
 

@@ -17,9 +17,9 @@ import pytest
 import yaml
 
 PATTERN = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PATTERN))
+sys.path.insert(0, str(PATTERN / "src"))
 
-from extensions import (  # noqa: E402
+from memory_manager.extensions import (  # noqa: E402
     CallerContext,
     Classification,
     ClassificationResult,
@@ -231,7 +231,9 @@ def test_yaml_provider_raises_rather_than_guessing(bad: list[dict[str, Any]]) ->
 
 @pytest.fixture(scope="module")
 def schema() -> dict[str, Any]:
-    return json.loads((PATTERN / "config" / "config.schema.json").read_text())
+    return json.loads(
+        (PATTERN / "src" / "memory_manager" / "config.schema.json").read_text()
+    )
 
 
 def test_example_config_validates(schema: dict[str, Any]) -> None:
