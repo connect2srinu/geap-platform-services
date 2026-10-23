@@ -77,11 +77,11 @@ lint: ## Lint Python (reports unavailable if ruff is absent)
 	$$ruff check patterns scripts templates && $$ruff format --check patterns scripts templates
 
 # pytest exits 5 when it collects nothing: skipped, not passed. Any other failure must fail.
-test: ## Run platform unit tests (reports unavailable if pytest is absent)
+test: ## Run unit tests, plus the conformance suite against the reference implementation
 	@if [ -x $(VENV)/bin/pytest ]; then pytest=$(VENV)/bin/pytest; \
 	elif command -v pytest >/dev/null 2>&1; then pytest=pytest; \
 	else echo "unavailable: pytest is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
-	dirs=""; for d in patterns/*/tests tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
+	dirs=""; for d in patterns/*/tests patterns/*/conformance tests; do [ -d "$$d" ] && dirs="$$dirs $$d"; done; \
 	if [ -z "$$dirs" ]; then echo "No test directories present yet — skipped, not passed."; exit 0; fi; \
 	rc=0; $$pytest -q $$dirs || rc=$$?; \
 	if [ $$rc -eq 5 ]; then echo "No tests collected yet — skipped, not passed."; exit 0; fi; \
