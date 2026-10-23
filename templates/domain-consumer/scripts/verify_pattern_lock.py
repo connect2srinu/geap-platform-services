@@ -62,7 +62,7 @@ def main() -> int:
         print("Pattern lock verification FAILED:")
         for f in failures:
             print(f"  - {f}")
-        print("\nIf the change was intentional, use the pattern-upgrade workflow.")
+        print("\nIf the change was intentional, follow docs/upgrade.md.")
         return 1
 
     print(f"Pattern lock verified: {lock['name']} v{actual_version}")

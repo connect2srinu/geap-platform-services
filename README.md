@@ -31,7 +31,7 @@ Two contracts follow from this, and both are versioned:
 
 | Pattern | Status | Version | Description |
 |---|---|---|---|
-| [memory-manager](patterns/memory-manager/) | `proposed` — design not yet approved | — | Domain-owned governed memory tool API over a managed Memory Bank |
+| [memory-manager](patterns/memory-manager/) | `proposed` — implemented, not yet released | — | Domain-owned governed memory tool API over a managed Memory Bank |
 
 ## Repository layout
 
@@ -42,15 +42,16 @@ schemas/          pattern manifest + design artifact front matter
 patterns/         the published patterns
 templates/        scaffolds for consumers, builds, infra, CI
 design/           per-feature intent.md and design.md
-docs/             architecture, decisions, onboarding, operations, releases
+docs/             decisions (ADRs) and onboarding
 scripts/          validators — plain Python, no Claude Code needed
 .github/          workflows, CODEOWNERS, PR template
 ```
 
 ## Getting started
 
+- **First-time setup (macOS or Linux):** [docs/onboarding/getting-started.md](docs/onboarding/getting-started.md)
+- **The whole lifecycle — build, gates, release, test as a client:** [docs/onboarding/demo.md](docs/onboarding/demo.md)
 - **Developers:** [docs/onboarding/developer-guide.md](docs/onboarding/developer-guide.md)
-- **See the whole flow end to end:** [docs/onboarding/demo.md](docs/onboarding/demo.md)
 - **Adopting a pattern:** [docs/onboarding/domain-adoption.md](docs/onboarding/domain-adoption.md)
 - **Working here with Claude Code:** [CLAUDE.md](CLAUDE.md)
 
@@ -62,8 +63,7 @@ Two documents, two gates:
 intent.md  → approved  →  design.md  → approved  →  implement → PR → approved → merge
 ```
 
-See [CLAUDE.md](CLAUDE.md).
-[CLAUDE.md](CLAUDE.md).
+See [CLAUDE.md](CLAUDE.md) and [docs/onboarding/demo.md](docs/onboarding/demo.md).
 
 ## Validation
 
