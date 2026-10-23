@@ -162,9 +162,9 @@ gaps that no earlier task owned, and each one is a deployment that looks healthy
 
 | Gap | Consequence | VERIFIED by |
 |---|---|---|
-| 7 of 12 declared metrics emitted nowhere, two of them named by the alert policies | An alert that is configured and never fires | `tests/test_observability.py` parses `src/` for `increment` calls and compares both ways against `pattern.yaml` |
+| 7 of 12 declared metrics emitted nowhere, two of them named by the alert policies | An alert that is configured and never fires | `tests/test_observability.py` parses the package for `increment` calls and compares both ways against `pattern.yaml` |
 | `quota.maxWritesPerMinute` configured, read by nothing | A domain can exhaust the quota three other domains share | `WriteBudget`; `create_app` refuses to start without one |
-| The example `Dockerfile` ran `pattern.api.main:app`, which does not exist, and nothing read the environment Terraform sets | A domain following the pattern cannot start the service | `src/bootstrap.py` + `src/asgi.py`; `tests/test_bootstrap.py` boots the shipped example config |
+| The example `Dockerfile` ran `pattern.api.main:app`, which does not exist, and nothing read the environment Terraform sets | A domain following the pattern cannot start the service | `memory_manager/bootstrap.py` + `memory_manager/asgi.py`; `tests/test_bootstrap.py` boots the shipped example config |
 
 Fixing them is a change to the pattern's startup surface, not to its architecture, contract or
 security posture: no endpoint, error code, extension point or control changed.
