@@ -15,15 +15,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /build
 
-# Dependencies first, so a source change does not invalidate the dependency layer.
-COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir uv==0.5.11 \
- && uv export --frozen --no-dev --format requirements-txt > /tmp/requirements.txt \
- && pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
-
-# Vendored pattern source plus the domain's own extensions and configuration.
+# The vendored pattern declares its own pinned dependencies, so installing it installs them.
+# Its layer comes first: your extensions change far more often than the pattern does.
 COPY vendor/pattern/ ./vendor/pattern/
-COPY extensions/ ./extensions/
 RUN pip install --no-cache-dir --prefix=/install ./vendor/pattern
 
 # ---- runtime stage ----------------------------------------------------------
@@ -52,4 +46,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz',timeout=2).status==200 else 1)"
 
-CMD ["python3", "-m", "uvicorn", "pattern.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# The factory form, so a configuration error is reported as one naming the field, rather than as
+# an import traceback from inside uvicorn's loader. The pattern installs as `memory_manager`.
+CMD ["python3", "-m", "uvicorn", "memory_manager.asgi:create", "--factory", "--host", "0.0.0.0", "--port", "8080"]
