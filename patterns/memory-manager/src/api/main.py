@@ -24,6 +24,13 @@ from ..policy import ReasonCode, validate_facts
 from ..providers import MemoryBank, ProviderUnavailable, encode_fact_text
 from ..providers.encoding import decode_fact_text
 from ..worker import VerificationOutcome, verify_write
+from .auth import (
+    AuthError,
+    IdentityConfig,
+    SubjectVerifier,
+    pseudonymise,
+    resolve_scope,
+)
 from .errors import ErrorCode, error_response
 from .models import (
     FactResultOut,
@@ -57,6 +64,8 @@ class Deployment:
     bank: MemoryBank
     classifier: PiiClassifier
     policy: PolicyProvider
+    identity: IdentityConfig
+    verifier: SubjectVerifier
     auth_enabled: bool = True
 
 
@@ -104,19 +113,21 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         x_agent_id: Annotated[str | None, Header()] = None,
         idempotency_key: Annotated[str | None, Header()] = None,
         x_correlation_id: Annotated[str | None, Header()] = None,
+        authorization: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
         correlation_id = x_correlation_id or str(uuid.uuid4())
 
         if idempotency_key is None:
             return error_response(ErrorCode.IDEMPOTENCY_KEY_MISSING, correlation_id)
 
-        caller = _resolve(deployment, x_agent_id, correlation_id)
-        if isinstance(caller, JSONResponse):
-            return caller
+        resolved = _resolve(deployment, x_agent_id, authorization, correlation_id)
+        if isinstance(resolved, JSONResponse):
+            return resolved
+        caller, subject = resolved
         if "remember" not in caller.operations:
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
-        context = _context(deployment, caller, correlation_id)
+        context = _context(deployment, caller, subject, correlation_id)
         facts = [
             _to_fact(f.topic, f.field_name, f.value, f.fact, f.basis)
             for f in body.facts
@@ -191,16 +202,18 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         topic: str | None = None,
         x_agent_id: Annotated[str | None, Header()] = None,
         x_correlation_id: Annotated[str | None, Header()] = None,
+        authorization: Annotated[str | None, Header()] = None,
     ) -> JSONResponse:
         correlation_id = x_correlation_id or str(uuid.uuid4())
 
-        caller = _resolve(deployment, x_agent_id, correlation_id)
-        if isinstance(caller, JSONResponse):
-            return caller
+        resolved = _resolve(deployment, x_agent_id, authorization, correlation_id)
+        if isinstance(resolved, JSONResponse):
+            return resolved
+        caller, subject = resolved
         if "recall" not in caller.operations:
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
-        context = _context(deployment, caller, correlation_id)
+        context = _context(deployment, caller, subject, correlation_id)
         try:
             stored = deployment.bank.retrieve(context.scope)
         except ProviderUnavailable:
@@ -266,25 +279,68 @@ def _to_fact(
 
 
 def _resolve(
-    deployment: Deployment, agent_id: str | None, correlation_id: str
-) -> Caller | JSONResponse:
+    deployment: Deployment,
+    agent_id: str | None,
+    authorization: str | None,
+    correlation_id: str,
+) -> tuple[Caller, str] | JSONResponse:
+    """Identify the calling agent, then verify the end user whose memory it is acting on.
+
+    Both are required. The agent says who is asking; the token says whose memory it is. A valid
+    agent with no end-user token has not told us the second, and the scope cannot be guessed.
+    """
     if agent_id is None:
         return error_response(ErrorCode.UNAUTHENTICATED, correlation_id)
     caller = deployment.callers.get(agent_id)
     if caller is None:
         return error_response(ErrorCode.CALLER_NOT_REGISTERED, correlation_id)
-    return caller
+
+    token = _bearer(authorization)
+    if token is None:
+        return error_response(ErrorCode.UNAUTHENTICATED, correlation_id)
+    try:
+        subject = deployment.verifier.verify(token)
+    except AuthError as exc:
+        code = (
+            ErrorCode.UNAUTHENTICATED
+            if exc.code == "UNAUTHENTICATED"
+            else ErrorCode.TOKEN_INVALID
+        )
+        return error_response(code, correlation_id)
+    if not subject:
+        return error_response(ErrorCode.SCOPE_NOT_RESOLVABLE, correlation_id)
+    return caller, subject
+
+
+def _bearer(authorization: str | None) -> str | None:
+    """The token from an Authorization header, or None.
+
+    A malformed header is treated as absent rather than as a distinct error. Telling a caller
+    whether its header *shape* was wrong versus its token invalid is worth nothing to them and
+    something to someone probing.
+    """
+    if not authorization:
+        return None
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        return None
+    return parts[1].strip()
 
 
 def _context(
-    deployment: Deployment, caller: Caller, correlation_id: str
+    deployment: Deployment, caller: Caller, subject: str, correlation_id: str
 ) -> CallerContext:
-    """Scope is derived here, from the caller — never from a request body."""
+    """Scope is derived here, from the verified subject - never from a request body.
+
+    The raw subject is pseudonymised before it reaches anywhere another component can see it, so no
+    extension, log, metric or audit event ever receives it (S-4, S-7).
+    """
+    pseudonym = pseudonymise(subject, deployment.identity.subject_hmac_key)
     return CallerContext(
         caller_id=caller.caller_id,
         domain=deployment.domain,
-        scope=(("user_id", f"{deployment.domain}:{caller.caller_id}"),),
-        subject_pseudonym=f"hmac-{caller.caller_id}",
+        scope=resolve_scope(deployment.domain, pseudonym),
+        subject_pseudonym=pseudonym,
         operations=caller.operations,
         granted_topics=caller.granted_topics,
         correlation_id=correlation_id,

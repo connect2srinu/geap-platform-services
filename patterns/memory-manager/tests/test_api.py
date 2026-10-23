@@ -24,6 +24,7 @@ from extensions import (  # noqa: E402
     Topic,
     TopicField,
 )
+from src.api.auth import IdentityConfig, LocalHeaderVerifier  # noqa: E402
 from src.api.main import Caller, ConfigurationError, Deployment, create_app  # noqa: E402
 from src.providers import FakeMemoryBank  # noqa: E402
 
@@ -84,6 +85,13 @@ def deployment(**kw: object) -> Deployment:
         "bank": FakeMemoryBank(),
         "classifier": AllowAll(),
         "policy": AllowAll(),
+        "identity": IdentityConfig(
+            issuer="https://issuer.example-domain.invalid",
+            jwks_uri="https://issuer.example-domain.invalid/.well-known/jwks.json",
+            audience="memory-manager",
+            subject_hmac_key="a-test-only-hmac-key",
+        ),
+        "verifier": LocalHeaderVerifier(environment="local"),
         "auth_enabled": False,
     }
     base.update(kw)
@@ -105,7 +113,9 @@ def fact(**kw: object) -> dict[str, object]:
     return base
 
 
-HEADERS = {"X-Agent-ID": "writer-agent", "Idempotency-Key": "key-0000001"}
+#: The local verifier treats the bearer value as the subject, so this stands in for a real token.
+END_USER = {"Authorization": "Bearer end-user-1"}
+HEADERS = {"X-Agent-ID": "writer-agent", "Idempotency-Key": "key-0000001", **END_USER}
 
 
 # --- the happy path -------------------------------------------------------------------
@@ -121,7 +131,7 @@ def test_a_valid_fact_is_stored_and_recalled() -> None:
     assert body["results"][0]["reasonCode"] == "ACCEPTED"
     assert body["results"][0]["memoryId"]
 
-    read = c.get("/v1/memories", headers={"X-Agent-ID": "writer-agent"})
+    read = c.get("/v1/memories", headers={"X-Agent-ID": "writer-agent", **END_USER})
     assert read.status_code == 200
     assert "Horizon" in read.json()["values"][0]["fact"]
 
@@ -199,7 +209,7 @@ def test_a_request_with_no_caller_is_401() -> None:
     r = c.post(
         "/v1/memories",
         json={"facts": [fact()]},
-        headers={"Idempotency-Key": "k-0000001"},
+        headers={"Idempotency-Key": "k-0000001", **END_USER},
     )
     assert r.status_code == 401
     assert r.json()["code"] == "UNAUTHENTICATED"
@@ -210,7 +220,7 @@ def test_an_unregistered_caller_is_403() -> None:
     r = c.post(
         "/v1/memories",
         json={"facts": [fact()]},
-        headers={"X-Agent-ID": "nobody", "Idempotency-Key": "k-0000001"},
+        headers={"X-Agent-ID": "nobody", "Idempotency-Key": "k-0000001", **END_USER},
     )
     assert r.status_code == 403
     assert r.json()["code"] == "CALLER_NOT_REGISTERED"
@@ -221,17 +231,33 @@ def test_a_read_only_caller_cannot_write() -> None:
     r = c.post(
         "/v1/memories",
         json={"facts": [fact()]},
-        headers={"X-Agent-ID": "reader-agent", "Idempotency-Key": "k-0000001"},
+        headers={
+            "X-Agent-ID": "reader-agent",
+            "Idempotency-Key": "k-0000001",
+            **END_USER,
+        },
     )
     assert r.status_code == 403
     assert r.json()["code"] == "CALLER_NOT_PERMITTED"
 
 
-def test_callers_do_not_share_a_scope() -> None:
+def test_different_end_users_do_not_share_a_scope() -> None:
+    """Scope follows the end user, not the agent - two agents acting for the same person see the
+    same memory, and the same agent acting for two people does not."""
     c = client()
     c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
-    read = c.get("/v1/memories", headers={"X-Agent-ID": "reader-agent"})
-    assert read.json()["values"] == []
+    other = c.get(
+        "/v1/memories",
+        headers={"X-Agent-ID": "writer-agent", "Authorization": "Bearer end-user-2"},
+    )
+    assert other.json()["values"] == []
+
+
+def test_two_agents_acting_for_the_same_end_user_see_the_same_memory() -> None:
+    c = client()
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    read = c.get("/v1/memories", headers={"X-Agent-ID": "reader-agent", **END_USER})
+    assert len(read.json()["values"]) == 1
 
 
 # --- the request schema refuses before any code runs ---------------------------------------------
@@ -256,7 +282,9 @@ def test_a_scope_in_the_body_is_refused() -> None:
 def test_a_missing_idempotency_key_is_400() -> None:
     c = client()
     r = c.post(
-        "/v1/memories", json={"facts": [fact()]}, headers={"X-Agent-ID": "writer-agent"}
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={"X-Agent-ID": "writer-agent", **END_USER},
     )
     assert r.status_code == 400
     assert r.json()["code"] == "IDEMPOTENCY_KEY_MISSING"
@@ -302,7 +330,9 @@ def test_recall_withholds_a_value_that_is_now_prohibited() -> None:
             environment="local",
         )
     )
-    read = strict.get("/v1/memories", headers={"X-Agent-ID": "writer-agent"})
+    read = strict.get(
+        "/v1/memories", headers={"X-Agent-ID": "writer-agent", **END_USER}
+    )
     assert read.json()["values"] == []
     assert read.json()["withheld"] == 1
 
@@ -311,7 +341,8 @@ def test_recall_can_filter_to_one_topic() -> None:
     c = client()
     c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
     read = c.get(
-        "/v1/memories?topic=health_conditions", headers={"X-Agent-ID": "writer-agent"}
+        "/v1/memories?topic=health_conditions",
+        headers={"X-Agent-ID": "writer-agent", **END_USER},
     )
     assert read.json()["values"] == []
 
@@ -355,3 +386,112 @@ def test_readyz_fails_when_the_bank_is_unreachable() -> None:
             raise ProviderUnavailable("no binding")
 
     assert client(bank=Unreachable()).get("/readyz").status_code == 503
+
+
+# --- the end-user token is required, not optional ----------------------------------------------
+
+
+def test_a_request_with_no_end_user_token_is_401() -> None:
+    """The agent says who is asking; the token says whose memory it is. Both are required, and
+    the scope cannot be guessed from the agent alone."""
+    c = client()
+    r = c.post(
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={"X-Agent-ID": "writer-agent", "Idempotency-Key": "k-0000001"},
+    )
+    assert r.status_code == 401
+    assert r.json()["code"] == "UNAUTHENTICATED"
+
+
+def test_recall_also_requires_an_end_user_token() -> None:
+    c = client()
+    r = c.get("/v1/memories", headers={"X-Agent-ID": "writer-agent"})
+    assert r.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["end-user-1", "Basic end-user-1", "Bearer", "Bearer   ", "bearer", ""],
+)
+def test_a_malformed_authorization_header_is_treated_as_absent(header: str) -> None:
+    """Distinguishing 'your header shape was wrong' from 'your token was invalid' is worth
+    nothing to a caller and something to someone probing."""
+    c = client()
+    r = c.post(
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={
+            "X-Agent-ID": "writer-agent",
+            "Idempotency-Key": "k-0000001",
+            "Authorization": header,
+        },
+    )
+    assert r.status_code == 401
+    assert r.json()["code"] == "UNAUTHENTICATED"
+
+
+def test_a_lowercase_bearer_scheme_is_accepted() -> None:
+    """The scheme is case-insensitive per RFC 7235; the token is not."""
+    c = client()
+    r = c.post(
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={
+            "X-Agent-ID": "writer-agent",
+            "Idempotency-Key": "k-0000001",
+            "Authorization": "bearer end-user-1",
+        },
+    )
+    assert r.status_code == 200
+
+
+def test_the_raw_subject_never_appears_in_a_response() -> None:
+    """S-7. The scope carries an HMAC pseudonym; the subject stays in the auth layer."""
+    c = client()
+    c.post(
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={**HEADERS, "Authorization": "Bearer alice@example.invalid"},
+    )
+    read = c.get(
+        "/v1/memories",
+        headers={
+            "X-Agent-ID": "writer-agent",
+            "Authorization": "Bearer alice@example.invalid",
+        },
+    )
+    assert "alice" not in read.text
+
+
+def test_the_scope_stored_in_the_bank_carries_the_pseudonym_not_the_subject() -> None:
+    """S-7, checked where it matters.
+
+    The earlier response-text assertion did not catch this: the scope never appears in a response,
+    so replacing the pseudonym with the raw subject passed every test. This inspects what actually
+    reached the bank.
+    """
+    bank = FakeMemoryBank()
+    c = client(bank=bank)
+    c.post(
+        "/v1/memories",
+        json={"facts": [fact()]},
+        headers={**HEADERS, "Authorization": "Bearer alice@example.invalid"},
+    )
+
+    scopes = {dict(m.scope).get("user_id") for m in bank._memories.values()}  # type: ignore[attr-defined]
+    assert scopes, "nothing was stored, so the assertion below would be vacuous"
+    for user_id in scopes:
+        assert user_id is not None
+        assert "alice" not in user_id
+        assert "@" not in user_id
+        assert len(user_id) == 32, "expected a 32-character HMAC pseudonym"
+
+
+def test_the_scope_is_namespaced_by_domain() -> None:
+    """S-8 at the storage boundary: another domain's deployment cannot collide with this one."""
+    bank = FakeMemoryBank()
+    c = client(bank=bank)
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    stored = next(iter(bank._memories.values()))  # type: ignore[attr-defined]
+    assert dict(stored.scope)["organization_id"] == "example-domain"
