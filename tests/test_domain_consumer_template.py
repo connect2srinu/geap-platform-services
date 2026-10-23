@@ -160,3 +160,64 @@ def test_the_env_example_names_every_variable_the_service_requires() -> None:
     text = (TEMPLATE / ".env.example").read_text(encoding="utf-8")
     missing = {name for name in required if f"{name}=" not in text}
     assert not missing, f"missing from .env.example: {sorted(missing)}"
+
+
+# --- the sample extensions --------------------------------------------------------------
+
+
+SAMPLES = ["sample_classifier.py", "sample_policy.py"]
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_a_sample_extension_says_plainly_that_it_is_not_production_code(
+    name: str,
+) -> None:
+    """A worked example that reads like a finished one is how a regex list reaches production."""
+    text = (TEMPLATE / "extensions" / name).read_text(encoding="utf-8")
+    assert "Not production code" in text
+    assert "**Do not ship this.**" in text
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_a_sample_extension_is_named_so_it_cannot_be_mistaken(name: str) -> None:
+    assert name.startswith("sample_")
+
+
+def test_the_template_config_points_at_the_samples_that_exist() -> None:
+    """A dotted path to a module that is not there stops startup — correctly, but pointlessly."""
+    config = _yaml(TEMPLATE / "config" / "domain-config.yaml")
+    for key, path in (config.get("extensions") or {}).items():
+        module, _, attribute = str(path).rpartition(".")
+        source = TEMPLATE / (module.replace(".", "/") + ".py")
+        assert (
+            source.is_file()
+        ), f"extensions.{key} points at {module}, which is not shipped"
+        assert f"class {attribute}" in source.read_text(
+            encoding="utf-8"
+        ), f"extensions.{key} names {attribute}, which {source.name} does not define"
+
+
+def test_the_sample_classifier_refuses_what_it_claims_to() -> None:
+    """The example must actually work, or it teaches the wrong shape."""
+    import sys
+    from dataclasses import dataclass
+
+    sys.path.insert(0, str(PATTERN / "src"))
+    sys.path.insert(0, str(TEMPLATE))
+    from extensions.sample_classifier import SampleClassifier  # noqa: PLC0415
+
+    @dataclass
+    class Probe:
+        value: str
+        text: str
+
+    classifier = SampleClassifier()
+    assert classifier.classify(Probe("Horizon", "Prefers Horizon."), None).allowed
+    # Prohibited in the narrative, not the value: the case an allowed topic invites.
+    refused = classifier.classify(
+        Probe("Horizon", "Takes 20mg of something and prefers Horizon."), None
+    )
+    assert not refused.allowed
+    assert refused.reason == "health"
+    # The reason is a code, never the matched text.
+    assert "20mg" not in str(refused.reason)

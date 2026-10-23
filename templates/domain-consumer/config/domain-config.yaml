@@ -65,8 +65,8 @@ extensions:
   # The two security-relevant defaults FAIL CLOSED: omit piiClassifier or policyProvider and the
   # service stores nothing at all. That is the design, not a bug — loosening it is a deliberate
   # act that should get review on your side.
-  piiClassifier: extensions.classifier.DomainPiiClassifier
-  policyProvider: extensions.policy.DomainPolicyProvider
+  piiClassifier: extensions.sample_classifier.SampleClassifier
+  policyProvider: extensions.sample_policy.SamplePolicyProvider
 
 quota:
   # Your agreed share of the SHARED project Memory Bank quota, divided across instances at

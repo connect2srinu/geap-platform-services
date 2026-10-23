@@ -8,7 +8,7 @@ For a domain team adopting a published platform pattern.
 |---|---|---|
 | 1 | Discover an approved pattern | You |
 | 2 | Select a published version | You |
-| 3 | Generate a consumer project from the template | You (`domain-onboard`) |
+| 3 | Copy `templates/domain-consumer/` into your own repository | You |
 | 4 | Apply domain configuration | You |
 | 5 | Implement permitted extensions | You |
 | 6 | Run the pattern conformance tests | **You, in your CI** |
@@ -32,16 +32,37 @@ production** — its design is not approved and its contracts may change.
 
 **Pin the version.** "Latest" is not a dependency.
 
-## 3. Generate the project
+If no release exists yet, you can still adopt: see `ref:` and `path:` under step 3. That is for
+evaluation and pre-release work, and your lock file records it as `unreleased: true` so nobody
+mistakes it for a published version.
+
+## 3. Start your project
+
+Copy `templates/domain-consumer/` into your own repository. It gives you a configuration file,
+sample extensions, a Dockerfile, a smoke test, the vendoring scripts, a runbook, agent-facing API
+documentation and a role-request template.
+
+Then fill in `pattern.lock.yaml` and vendor the pattern:
 
 ```bash
-/domain-onboard
+python3 -m venv .venv && .venv/bin/python -m pip install -r scripts/requirements.txt
+.venv/bin/python scripts/vendor_pattern.py
 ```
 
-Produces a domain-owned project with configuration, extension stubs, a Dockerfile, Terraform, a CI/CD
-pipeline, a runbook, agent-facing API documentation and a role-request template.
+`pattern.lock.yaml` names **exactly one** source:
 
-## 4. Configure
+| Key | What it does |
+|---|---|
+| `tag:` | A published release. The tarball is checksum-verified against the published `SHA256SUMS`. **Use this in production.** |
+| `ref:` | A branch, tag or commit. The resolved commit is written back to the lock, so `ref: main` cannot mean two things next week. |
+| `path:` | A local checkout of the platform repository, for developing against an unreleased pattern. |
+
+`ref:` and `path:` also require `unreleased: true`. Neither is checksum-verified — there is no
+published `SHA256SUMS` for them — and the script says so when it runs.
+
+Your code lives outside `vendor/`. An upgrade is then a directory swap, not a merge.
+
+## 4. Configure your topics and callers
 
 `config/domain-config.yaml`, validated against the pattern's schema **at startup** — the service
 refuses to start on invalid configuration rather than defaulting. Never a default that weakens a
@@ -58,11 +79,21 @@ raises becomes a denial plus a metric, never a bypass.
 ## 6. Conformance — the step that matters
 
 ```bash
+CONFORMANCE_BASE_URL=http://localhost:8080 \
+CONFORMANCE_AGENT_ID=<your-writer-agent> \
+CONFORMANCE_READER_ID=<your-reader-agent> \
+CONFORMANCE_ALLOWED_TOPIC=<a non-sensitive, enabled topic> \
+CONFORMANCE_ALLOWED_FIELD=<a field on that topic> \
+CONFORMANCE_SENSITIVE_TOPIC=<a sensitive or restricted topic> \
 pytest -q vendor/pattern/conformance/
 ```
 
-Run it in your CI, against your build. It is how you demonstrate that your customization still honours
-the contract.
+**`CONFORMANCE_BASE_URL` is the whole point.** Without it the suite starts the pattern's own
+reference implementation in process and tests *that* — which proves the suite works, and proves
+nothing whatsoever about your build. Point it at your running service.
+
+Run it in your CI, against your build. It is how you demonstrate that your customization still
+honours the contract.
 
 **An empty suite that collects zero tests is `unavailable`, not a pass.** The reference pipeline fails
 the build on a zero-test collection for exactly that reason.
@@ -96,7 +127,9 @@ or PII in logs**.
 
 ## 11. Operate and upgrade
 
-Runbook: `docs/runbook.md`. Upgrades: `/pattern-upgrade`.
+Runbook: `docs/runbook.md`. To upgrade, change the version in `pattern.lock.yaml`, re-run
+`scripts/vendor_pattern.py`, and run the conformance suite against the new build before you
+deploy it. `docs/upgrade.md` in your project carries the per-version notes.
 
 ## What you may change, and what you must not
 
