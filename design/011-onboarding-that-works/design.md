@@ -1,7 +1,9 @@
 ---
 artifact: design
 feature: 011-onboarding-that-works
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-23
 ---
 
 # Onboarding a domain can actually complete — design
@@ -140,4 +142,4 @@ manifest digest — so a modified `pattern.yaml` fails regardless of source.
 
 ## Approval
 
-A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).
+Approved by Srinivasa reddy, 2026-10-23, instructed in session.
