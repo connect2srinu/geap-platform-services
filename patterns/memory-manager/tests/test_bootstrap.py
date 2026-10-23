@@ -252,3 +252,43 @@ def test_the_example_configuration_produces_a_service_that_serves() -> None:
         build_deployment(config(), environment="local"), environment="local"
     )
     assert TestClient(app).get("/healthz").status_code == 200
+
+
+# --- the replay cache ---------------------------------------------------------------------
+
+
+def test_a_deployment_gets_a_replay_cache_without_configuring_one() -> None:
+    """Idempotency is a contract promise, not an opt-in. Defaults must deliver it."""
+    deployment = build_deployment(config())
+    assert deployment.replay is not None
+    assert len(deployment.replay) == 0
+
+
+def test_the_replay_bounds_come_from_configuration() -> None:
+    sized = config()
+    sized["idempotency"] = {"retentionSeconds": 60, "maxEntries": 5}
+    cache = build_deployment(sized).replay
+    for i in range(20):
+        cache.record(f"key-{i}", "fingerprint", {"outcome": "written"})
+    assert len(cache) == 5
+
+
+def test_a_nonsensical_replay_bound_is_refused() -> None:
+    broken = config()
+    broken["idempotency"] = {"maxEntries": 0}
+    with pytest.raises(Exception):  # noqa: B017 - schema or constructor, both are refusals
+        build_deployment(broken)
+
+
+def test_the_idempotency_block_is_optional_for_existing_domains() -> None:
+    """Adding it must not invalidate a configuration written before it existed."""
+    import json
+
+    import jsonschema
+
+    schema = json.loads(
+        (PATTERN / "src" / "memory_manager" / "config.schema.json").read_text()
+    )
+    without = config()
+    without.pop("idempotency", None)
+    jsonschema.validate(without, schema, format_checker=jsonschema.FormatChecker())

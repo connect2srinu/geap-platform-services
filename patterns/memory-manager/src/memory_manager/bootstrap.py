@@ -36,6 +36,7 @@ from .extensions import (
 
 from .api.auth import IdentityConfig, JwtSubjectVerifier, LocalHeaderVerifier
 from .api.main import Caller, ConfigurationError, Deployment
+from .api.replay import ReplayCache
 from .observability import LoggingMetrics, WriteBudget
 from .providers import FakeMemoryBank, MemoryBank
 
@@ -188,6 +189,12 @@ def build_deployment(
         writes_per_minute=quota["maxWritesPerMinute"], max_instances=max_instances
     )
 
+    idempotency = config.get("idempotency") or {}
+    replay = ReplayCache(
+        retention_seconds=int(idempotency.get("retentionSeconds", 900)),
+        max_entries=int(idempotency.get("maxEntries", 10000)),
+    )
+
     identity = IdentityConfig(
         issuer=config["identity"]["issuer"],
         jwks_uri=config["identity"]["jwksUri"],
@@ -209,4 +216,5 @@ def build_deployment(
         verifier=verifier,
         metrics=metrics,
         budget=budget,
+        replay=replay,
     )
