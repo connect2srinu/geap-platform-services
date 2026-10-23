@@ -3,18 +3,15 @@
 <!-- One paragraph. Link the design folder: design/NNN-slug/ -->
 
 **Design folder:** `design/NNN-slug/`
-**Track:** full / light
 
 ## SDLC gates
 
 <!-- A checked box means the artifact's front matter says `status: approved` with a named human
      approver. Checking a box you have not verified defeats the whole process. -->
 
-- [ ] Gate A — `intent.md` approved
-- [ ] Gate B — `design.md` approved
-- [ ] Gate C — `controls-check.md` approved
-- [ ] Gate D — `tasks.md` approved
-- [ ] Light track — `change.md` present and the four light-track conditions hold
+- [ ] `intent.md` approved
+- [ ] `design.md` approved — `python3 scripts/validate_design_artifacts.py design/NNN-slug` prints
+      `both approved - implementation may proceed`
 
 ## Design conformance
 
@@ -33,13 +30,13 @@
 | Lint | `make lint` | |
 | Tests | `make test` | |
 | Terraform | `make terraform-validate` | |
-| Conformance | `python3 scripts/run_conformance.py --pattern <name>` | |
+| Conformance | `.venv/bin/pytest -q patterns/<name>/conformance` (also run by `make test`) | |
 
 Live managed-service verification: performed / **not performed**
 
 ## Security
 
-- [ ] Controls assessment is current for what was actually implemented
+- [ ] Each rule in `standards/security.md` this change touches has a test that fails when the rule is removed
 - [ ] No new log, trace attribute or error response carries memory content, PII or secrets
 - [ ] Any new permission is least privilege; no primitive roles
 - [ ] Any new dependency is pinned and scanned
@@ -67,5 +64,5 @@ Live managed-service verification: performed / **not performed**
 
 ---
 
-<!-- Human review (Gate E) is required and is not satisfied by any automated check in this
-     repository. Merge (Gate F) requires explicit authorization. -->
+<!-- Human review is required and is not satisfied by any automated check in this repository.
+     Merge requires explicit authorization. -->

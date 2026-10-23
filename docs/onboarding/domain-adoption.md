@@ -24,7 +24,7 @@ allocation. Everything else is yours.
 ## 1–2. Discover and select
 
 ```bash
-git tag -l 'memory-manager/v*' | sort -V
+git tag -l 'memory-manager/v*' --sort=v:refname
 ```
 
 Check `metadata.status` in the release's `pattern.yaml`. **Do not adopt a `proposed` pattern for

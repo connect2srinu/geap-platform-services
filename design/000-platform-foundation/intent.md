@@ -13,7 +13,7 @@ patterns_touched: [memory-manager]
 
 **Status:** Draft for review — Phase 1 (Discovery) and Phase 2 (Proposal). No repository files created or modified.
 **Date:** 2026-10-20
-**Target repository:** `/home/sgadire1/projects/geap/geap-platform-services`
+**Target repository:** `<workspace>/geap-platform-services`
 **Confirmed constraints from requester:** CI/CD via GitHub Actions; infrastructure via Terraform on Google Cloud.
 
 Evidence labels used throughout, adopted from the prior repository's own convention:
@@ -34,7 +34,7 @@ Evidence labels used throughout, adopted from the prior repository's own convent
 **VERIFIED — the target directory is empty.**
 
 ```
-/home/sgadire1/projects/geap/geap-platform-services/   # 0 files, 0 subdirectories
+<workspace>/geap-platform-services/   # 0 files, 0 subdirectories
 ```
 
 - Not a git repository (`git rev-parse` → `fatal: not a git repository`).
@@ -46,10 +46,10 @@ Evidence labels used throughout, adopted from the prior repository's own convent
 | Tool | Version | Notes |
 |---|---|---|
 | git | 2.43.0 | Interactive rebase/add unavailable in this harness |
-| gh | 2.45.0 | Authenticated as `connect2srinu`; scopes `gist`, `read:org`, `repo`, `workflow` |
+| gh | 2.45.0 | Authenticated as the maintainer's personal account; scopes `gist`, `read:org`, `repo`, `workflow` |
 | terraform | 1.9.8 | `tofu` not installed |
 | docker | 29.0.0 | |
-| gcloud | 589.0.0 | account `connect2srinu@gmail.com`, project `e2eml-222003`, region `us-central1` |
+| gcloud | 589.0.0 | the maintainer's personal account and sandbox project, region `us-central1` |
 | python3 | 3.12.3 | |
 | node / npm / pnpm | 22.16.0 | |
 | uv | present | `poetry` absent |
@@ -62,15 +62,15 @@ write must either be pure-Python/stdlib or declare its dependency explicitly. CI
 toolchain and not assume a developer machine. Phase 4 validation of Python linting will be reported as
 **unavailable** unless we provision a local `uv` environment first.
 
-**VERIFIED — the `gh` token has `repo` and `workflow` scope but the account is a personal account
-(`connect2srinu`), not an enterprise org.** Branch protection, CODEOWNERS enforcement and required
+**VERIFIED — the `gh` token has `repo` and `workflow` scope but the account is a personal account,
+not an enterprise org.** Branch protection, CODEOWNERS enforcement and required
 reviews behave differently on personal repositories than on an organization with rulesets. This matters
 for §2.7 and is an **OPEN** item (D8).
 
 ## 1.2 Existing conventions discovered
 
 There is no code in the target repository, but there are three sibling projects under
-`/home/sgadire1/projects/geap/`. One of them is directly load-bearing.
+the same workspace directory. One of them is directly load-bearing.
 
 | Project | What it is | Relevance |
 |---|---|---|
@@ -334,7 +334,7 @@ Everything below is absent and in scope for Phase 3:
 | R6 | **No field-level structured-profile update in Memory Bank** (VERIFIED) — the POC stores each value as an append-only typed JSON fact with a write counter. | Medium | Carry forward as a stated provider constraint in `design.md`; do not design an update-in-place API. |
 | R7 | **Idempotency is an open defect in the prior art** (MB-12, status **CONFLICT**: "no idempotency keys, distributed locking, retry state, or reconciliation"). The new design adds at-least-once delivery via Pub/Sub, which makes this *worse* unless solved. | **High** | Decision **D7**: idempotency key is part of the `remember` contract from v1, not a later enhancement. |
 | R8 | Python tooling (`ruff`/`pytest`/`mypy`) absent on this machine. | Low | `uv`-managed project venv; CI installs its own. Phase 4 reports honestly. |
-| R9 | No Google Cloud project is designated for this repo's reference infrastructure (`e2eml-222003` is a personal sandbox). | Low | No infrastructure will be applied. Terraform is validated with `-backend=false` only. Decision **D9**. |
+| R9 | No Google Cloud project is designated for this repo's reference infrastructure (the configured project is a personal sandbox). | Low | No infrastructure will be applied. Terraform is validated with `-backend=false` only. Decision **D9**. |
 | R10 | **ASSUMPTION:** reference implementation language is Python 3.12 + FastAPI, matching the POC and ADK. Not yet decided. | Medium | Decision **D2**. |
 | R11 | **Shared Memory Bank quota across all domains** *(new, 2026-10-20)*. One platform project = one per-region quota pool; separate banks do not separate quota. Writes consume read quota; agents' direct `recall` bypasses the Memory Manager's limiter entirely. One domain can starve another. | **High** | Per-domain quota budgets as platform-owned config, enforced by a rate governor in the worker and monitored by the NFR module. See §2.13. Quota-increase request and per-domain attribution are Pattern 001 design items. |
 | R12 | **Domain deploy access into the platform project** *(new, 2026-10-20)* conflicts with least privilege: "deploy independently" needs write access to a project the platform owns. | Medium | Scope each domain's deployer SA to its own resource name prefix; Pattern 001 controls assessment must cover it explicitly. |

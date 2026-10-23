@@ -8,13 +8,15 @@ breaks the contract.
 
 ## Plan the upgrade first
 
+Compare the two released versions' contracts, configuration schema, extension interfaces, security
+rules and infrastructure, and write down the migration steps before changing anything:
+
 ```bash
-/pattern-upgrade
+git diff <pattern>/v<current>..<pattern>/v<target> -- patterns/<pattern>/contracts \
+    patterns/<pattern>/src/memory_manager/config.schema.json patterns/<pattern>/infrastructure
 ```
 
-It diffs the two versions' contracts, configuration schemas, extension interfaces, security
-requirements and infrastructure, and produces a migration plan. **Do not upgrade by bumping the lock
-file.**
+Run it in a clone of the platform repository. **Do not upgrade by bumping the lock file.**
 
 ## Check the path is supported
 

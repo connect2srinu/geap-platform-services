@@ -1,13 +1,37 @@
 # Demo — a feature from idea to a domain running it
 
-Three acts, about 45 minutes. Everything typed into `claude` is shown as `>`; everything else is a
-shell command. Where a step says **YOU**, no tool does it for you — that is the point of the gate.
+The whole lifecycle, in the order it happens: **build** a feature through its gates, **release**
+it, then **adopt and test** it as a client. Three acts, about 45 minutes. Everything typed into
+`claude` is shown as `>`; everything else is a shell command. Where a step says **YOU**, no tool
+does it for you — that is the point of the gate.
 
-Setup, once:
+```
+ BUILD                                                     RELEASE            CLIENT
+ intent.md ─▶ YOU approve ─▶ design.md ─▶ YOU approve ─▶   tag + workflow ─▶  adopt, configure,
+                                          │                  YOU approve        run, test,
+                                          ▼                  the release        conformance
+                              branch ─▶ implement ─▶ PR ─▶ CI ─▶ YOU approve ─▶ merge
+```
+
+Setup, once — on a new machine, follow [getting-started.md](getting-started.md); otherwise, from the
+repository root:
 
 ```bash
-cd ~/projects/geap/geap-platform-services && make deps && make verify
+make deps && make verify
 ```
+
+## The gates
+
+| Gate | Who | Recorded as | What enforces it |
+|---|---|---|---|
+| `intent.md` approved | Requester / platform lead | `status: approved`, `approved_by`, `approved_date` in its front matter, **edited by hand** | `/feature-start` will not write a design before it; the validator prints the gate state |
+| `design.md` approved | Platform architect | the same | No implementation code before it (CLAUDE.md); the validator prints `both approved - implementation may proceed` |
+| Pull request approved | ≥1 reviewer | GitHub review | Branch protection: the required checks, up to date with `main`, conversations resolved |
+| Merge | Repository admin | the merge | Never Claude Code: `gh pr merge` is denied in `.claude/settings.json` |
+| Release | Maintainer, then the `release` environment's reviewers | tag + workflow dispatch | `release.yml` checks, and the environment's required reviewers |
+
+On a single-maintainer repository GitHub will not let you approve your own PR, so the PR gate is
+unenforced there — and the repository says so rather than pretending otherwise.
 
 ---
 
@@ -128,10 +152,24 @@ git checkout main && git pull
 ```
 
 It validates readiness, checks the version bump against the **real contract diff**, and produces a
-checklist plus the exact commands. **It publishes nothing.**
+checklist plus the exact commands. **It publishes nothing.** A published version cannot be withdrawn
+once a domain has consumed it.
 
-Edit `pattern.yaml` (`version`, `status`), `CHANGELOG.md` and the release notes. Then PR, review,
-merge, and:
+**Once, before the first release, an admin sets up in GitHub settings** (none of this travels with
+a clone): a **`release` environment with required reviewers** — without it, GitHub creates the
+environment on first use **with no reviewers**, and the second human gate does not exist — and tag
+protection on `*/v*`. *Neither was configured as of 2026-10-23.*
+
+The release commit is a normal PR that changes metadata and notes only. `release.yml` refuses to
+publish without each of these:
+
+| File | Change |
+|---|---|
+| `patterns/<name>/pattern.yaml` | `metadata.version` matching the tag; `metadata.status` moved off `proposed` (to `alpha`, `beta` or `certified`) |
+| `patterns/<name>/CHANGELOG.md` | `## [Unreleased]` becomes `## [<version>] — <date>` |
+| `docs/releases/<name>-v<version>.md` | Release notes, stating whether **live verification** was performed |
+
+Then PR, review, merge, and:
 
 ```bash
 git tag memory-manager/v0.1.0 && git push origin memory-manager/v0.1.0
@@ -145,8 +183,10 @@ gh workflow run release.yml -f pattern=memory-manager -f version=0.1.0 -f dry_ru
 gh run watch
 ```
 
-Dry run first — it validates, builds the tarball, writes `SHA256SUMS` and attests provenance without
-creating a Release. Only then:
+Dry run first — it builds from the **tag**, never a branch, validates, builds the tarball, writes
+`SHA256SUMS` and attests provenance without creating a Release. Its publish job waits for a
+`release` environment reviewer — **YOU** approve it on the run's page, in the dry run and the real
+run alike. Only then:
 
 ```bash
 gh workflow run release.yml -f pattern=memory-manager -f version=0.1.0 -f dry_run=false
@@ -158,23 +198,32 @@ gh release view memory-manager/v0.1.0
 
 ---
 
-# Act 3 — Adopt it (domain team)
+# Act 3 — Adopt and test it (clients)
 
-## 1. Generate the project
+Two kinds of client consume a pattern, and both are tested here:
+
+| Client | Consumes | What it tests |
+|---|---|---|
+| **Domain team** | A pattern version, which it configures, extends, builds and deploys | That its customised build still honours the contract: steps 4 and 5 |
+| **Agent team** | A domain's deployed service, through the tool API (`contracts/openapi.yaml`) | That calls behave as the contract says: the calls in step 4 |
+
+To try the API before adopting anything, run the pattern's own reference implementation:
+[getting-started.md, step 6](getting-started.md#6-run-the-service-locally-5-minutes).
+
+## 1. Start the project
+
+Copy the template into a **separate project** — not a fork of the platform repo. A fork would carry
+every pattern, all the standards and the whole process, and turn each upgrade into a monorepo merge.
 
 ```bash
-cd ~/projects/geap/geap-platform-services && claude
+cp -R templates/domain-consumer ../customer-memory-manager && cd ../customer-memory-manager
 ```
 
-```
-> generate a consumer project for the customer domain from memory-manager v0.1.0
-```
-
-It produces a **separate project** — not a fork of the platform repo. A fork would carry every
-pattern, all the standards and the whole process, and turn each upgrade into a monorepo merge.
+Fill in `pattern.lock.yaml`: a released `tag:`, or — before any release exists — `ref:` or `path:`
+with `unreleased: true` ([domain-adoption.md](domain-adoption.md#3-start-your-project)).
 
 ```bash
-cd ../customer-memory-manager && git init -b main && git add -A && git commit -m "Adopt memory-manager v0.1.0"
+git init -b main && git add -A && git commit -m "Adopt memory-manager"
 ```
 
 ## 2. Vendor the pattern
@@ -292,6 +341,18 @@ grep -riE "Horizon|20mg|$END_USER_TOKEN" server.log || echo "clean - no payload,
 ```bash
 .venv/bin/pytest -q vendor/pattern/conformance/
 ```
+
+Against a running build — your local one, or the deployed service:
+
+```bash
+CONFORMANCE_BASE_URL=http://localhost:8080 .venv/bin/pytest -q vendor/pattern/conformance/
+```
+
+Without `CONFORMANCE_BASE_URL` the suite tests the pattern's reference implementation, not your
+build. The variables are in the suite's `README.md`.
+
+After deploying, smoke-test the real service with `python3 scripts/smoke_test.py --base-url
+https://<service-url> --agent-id <your-caller-id>`.
 
 This is how the domain shows its customization still honours the contract. Say plainly that the
 platform **cannot see this run** — if the domain deletes the job, nothing outside their team

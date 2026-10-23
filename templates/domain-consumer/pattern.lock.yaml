@@ -1,4 +1,4 @@
-# Pinned pattern dependency. Do not edit by hand -- use the pattern-upgrade workflow.
+# Pinned pattern dependency. Do not edit by hand -- follow docs/upgrade.md.
 # Verified in CI by scripts/verify_pattern_lock.py.
 pattern:
   name: <pattern-name>
