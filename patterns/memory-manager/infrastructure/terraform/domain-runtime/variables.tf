@@ -30,7 +30,7 @@ variable "container_image" {
 }
 
 variable "memory_bank_id" {
-  description = "The PLATFORM-PROVISIONED memory bank for this domain, as a full resource name. Consumed as an input; this module never creates it."
+  description = "The PLATFORM-PROVISIONED memory bank for this domain, as a full resource name (projects/<number>/locations/<region>/memoryBanks/<id>). Consumed as an input; this module never creates it."
   type        = string
 }
 

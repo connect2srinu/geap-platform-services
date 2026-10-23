@@ -57,5 +57,9 @@ strict = true
 # The provider SDK ships in the optional 'provider' extra, so a type check that demanded it would
 # force every CI job to install it. The adapter's own surface is typed; the SDK's is not.
 [[tool.mypy.overrides]]
-module = ["vertexai.*"]
+module = ["agentplatform.*"]
+# Two codes, because the same import fails differently depending on the environment: without the
+# extra mypy reports import-not-found, with it (the package has no py.typed marker) import-untyped.
+# CI runs without it and a developer may run with it; both must behave the same.
 ignore_missing_imports = true
+disable_error_code = ["import-untyped"]

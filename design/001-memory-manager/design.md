@@ -27,7 +27,22 @@ Probed against a real Memory Bank on 2026-10-22 with
 | Bank-level TTL applies, survives consolidation, and the memory expires | **PASS** — a consolidation update **resets** the TTL |
 | Scope-only retrieve returns everything, with pagination | **PASS** — 12 memories over 3 pages, 0 missing |
 | Read-after-write latency | **PASS** — p99 0.16 s against a 10 s bound |
-| Memory Bank supports a customer-managed key | **UNAVAILABLE** — Cloud KMS not enabled. **Not a "no"** — undetermined |
+| Memory Bank supports a customer-managed key | **PARTLY RESOLVED, 2026-10-23** — the API surface accepts one: `CreateMemoryBankConfig.encryption_spec.kms_key_name`, verified by inspecting the installed SDK. Settable **only at bank creation**. That it works end to end is still **UNAVAILABLE** — Cloud KMS is not enabled, so nothing was created with one |
+
+**The client moved under us (2026-10-23).** `vertexai.Client` is deprecated in the same pinned
+release in favour of `agentplatform.Client`, and the memory operations move from
+`agent_engines.memories` to `memory_banks.memories`. A memory bank is now a first-class resource,
+`projects/<p>/locations/<l>/memoryBanks/<id>`, rather than an agent engine's `reasoningEngines/<id>`.
+Every method name and keyword the adapter uses was compared across the two clients and is
+identical, so this is a client swap and a resource-name change, not a redesign — no version bump,
+no contract change, and the `MemoryBank` Protocol is untouched. Two things outside the adapter had
+to follow: the IAM Condition in the platform Terraform module (it matched on `reasoningEngines/`
+and would never have matched a bank), and `MEMORY_BANK_ID`'s documented format.
+
+**Correction to an earlier claim.** The Terraform module said the provider had no resource for the
+engine. Checked against the pinned provider's own schema: google 7.45 *does* have
+`google_vertex_ai_reasoning_engine` and its IAM resources. It has no resource for a **memory
+bank**, so the bank is still created out of band — but the earlier wording overstated the gap.
 
 **Two hard provider limits found:**
 

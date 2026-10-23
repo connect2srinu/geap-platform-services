@@ -74,12 +74,15 @@ typecheck: ## Type-check pattern source (reports unavailable if mypy is absent)
 	@if [ -x $(VENV)/bin/mypy ]; then mypy=$(VENV)/bin/mypy; \
 	elif command -v mypy >/dev/null 2>&1; then mypy=mypy; \
 	else echo "unavailable: mypy is not installed (run 'make deps') — NOT a pass"; exit 0; fi; \
-	dirs=""; \
-	for d in patterns/*/src patterns/*/extensions; do \
-	  if [ -d "$$d" ] && find "$$d" -name '*.py' -print -quit | grep -q .; then dirs="$$dirs $$d"; fi; \
+	checked=0; \
+	for pattern in patterns/*/; do \
+	  find "$$pattern/src" -name '*.py' -print -quit 2>/dev/null | grep -q . || continue; \
+	  mypy_abs=$$(cd $$(dirname $$mypy) 2>/dev/null && pwd)/$$(basename $$mypy); \
+	  [ -x "$$mypy_abs" ] || mypy_abs=$$mypy; \
+	  ( cd "$$pattern" && "$$mypy_abs" --strict src extensions ) || exit 1; \
+	  checked=$$((checked + 1)); \
 	done; \
-	if [ -z "$$dirs" ]; then echo "No pattern source present yet — skipped, not passed."; exit 0; fi; \
-	$$mypy --strict $$dirs
+	if [ "$$checked" -eq 0 ]; then echo "No pattern source present yet — skipped, not passed."; fi
 
 lint: ## Lint Python (reports unavailable if ruff is absent)
 	@if [ -x $(VENV)/bin/ruff ]; then ruff=$(VENV)/bin/ruff; \

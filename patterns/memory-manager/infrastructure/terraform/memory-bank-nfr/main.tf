@@ -11,9 +11,16 @@
 # So the platform controls what a domain's service account may do to a bank. It does not control
 # what their code does before it gets there. Nothing here should be described as more than that.
 #
-# The Agent Engine resource itself is NOT created here: the provider has no Terraform resource for
-# it at the pinned provider version, so it is created out of band and passed in. That gap is real
-# and is recorded rather than hidden behind a resource that does not exist.
+# The bank itself is NOT created here. Checked against the pinned provider's own schema on
+# 2026-10-23: google provider 7.45 has google_vertex_ai_reasoning_engine and its IAM resources, but
+# no resource for a memory bank, which the SDK now treats as a first-class resource of its own
+# (projects/*/locations/*/memoryBanks/*). So the bank is created out of band and passed in. That
+# gap is real and is recorded rather than hidden behind a resource that does not exist.
+#
+# Consequence for CMEK (control C-20): the bank's customer-managed encryption key can only be set
+# when the bank is created, via the SDK's CreateMemoryBankConfig.encryption_spec.kms_key_name.
+# There is no Terraform resource to express it and no way to add it to an existing bank, so until
+# the provider catches up, CMEK is a property of the out-of-band creation step, not of this module.
 
 locals {
   name = "${var.domain_name}-memory-bank"
@@ -33,7 +40,7 @@ resource "google_project_iam_member" "memory_manager_bank_access" {
   condition {
     title       = "${var.domain_name} bank only"
     description = "Limits this identity to its own domain's memory bank. Without the condition, one domain's service account could reach every bank in the shared project."
-    expression  = "resource.name.startsWith(\"projects/${data.google_project.platform.number}/locations/${var.region}/reasoningEngines/\") && resource.name.endsWith(\"/${var.domain_name}\")"
+    expression  = "resource.name.startsWith(\"projects/${data.google_project.platform.number}/locations/${var.region}/memoryBanks/\") && resource.name.endsWith(\"/${var.domain_name}\")"
   }
 }
 

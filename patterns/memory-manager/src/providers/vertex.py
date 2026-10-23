@@ -1,8 +1,8 @@
 """The Vertex AI Memory Bank adapter.
 
 Every call and keyword below was checked against the installed
-``google-cloud-aiplatform[agent_engines]==2.3.0`` on 2026-10-22, not against documentation. The
-surface is ``client.agent_engines.memories``:
+``google-cloud-aiplatform[agent_engines]==2.3.0`` on 2026-10-23, not against documentation. The
+surface is ``client.memory_banks.memories``:
 
     generate(name, direct_memories_source=..., scope=...)  -> operation with generated_memories
     get(name)                                              -> Memory
@@ -19,6 +19,14 @@ Two things the inspection corrected, which the design had assumed differently:
   everything in this scope". ``list`` is, and that is what :meth:`retrieve` below uses, filtering by
   scope in the adapter. Paging is handled by the SDK's own iterator rather than by a page token,
   which sidesteps the broken pager the probe found.
+
+A third correction, made on 2026-10-23: ``vertexai.Client`` is deprecated in this same release in
+favour of ``agentplatform.Client``, and the two are not the same object. The memory operations move
+from ``agent_engines.memories`` to ``memory_banks.memories``, and with them the resource: a memory
+bank is now addressed as ``projects/<p>/locations/<l>/memoryBanks/<id>`` rather than borrowing an
+agent engine's ``reasoningEngines/<id>``. Every method name and keyword this adapter uses was
+compared across the two clients and is identical, so the port is the client and the resource name,
+nothing else. No version bump: both clients ship in the pinned release.
 
 The import is deferred into the constructor so the rest of the pattern, its tests and CI do not need
 the SDK installed. It is declared as the ``provider`` extra in ``pyproject.toml``.
@@ -73,8 +81,8 @@ def _wrap(error: BaseException) -> ProviderUnavailable:
 class VertexMemoryBank:
     """A :class:`~.memory_bank.MemoryBank` backed by Vertex AI Memory Bank.
 
-    ``bank`` is the full Agent Engine resource name, e.g.
-    ``projects/<number>/locations/<region>/reasoningEngines/<id>``.
+    ``bank`` is the full memory bank resource name, e.g.
+    ``projects/<number>/locations/<region>/memoryBanks/<id>``.
     """
 
     def __init__(
@@ -92,16 +100,16 @@ class VertexMemoryBank:
             self._memories = client
             return
         try:
-            import vertexai  # noqa: PLC0415 - deferred so the SDK is optional
+            import agentplatform  # noqa: PLC0415 - deferred so the SDK is optional
         except (
             ImportError
         ) as exc:  # pragma: no cover - exercised only without the extra
             raise ProviderUnavailable(
                 "the provider SDK is not installed; install the 'provider' extra"
             ) from exc
-        self._memories = vertexai.Client(
+        self._memories = agentplatform.Client(
             project=project, location=location
-        ).agent_engines.memories
+        ).memory_banks.memories
 
     # -- writes ----------------------------------------------------------------------
 

@@ -223,14 +223,14 @@ def test_a_deployed_environment_uses_real_token_verification(
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "example-project")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     monkeypatch.setenv(
-        "MEMORY_BANK_ID", "projects/0/locations/us-central1/reasoningEngines/0"
+        "MEMORY_BANK_ID", "projects/0/locations/us-central1/memoryBanks/0"
     )
     try:
         deployment = build_deployment(config(), environment="production")
     except (
         Exception
     ) as exc:  # the provider extra is not installed in the default dev env
-        assert "provider" in str(exc).lower() or "vertexai" in str(exc).lower()
+        assert "provider" in str(exc).lower() or "agentplatform" in str(exc).lower()
         return
     assert isinstance(deployment.verifier, JwtSubjectVerifier)
     assert not isinstance(deployment.bank, FakeMemoryBank)
