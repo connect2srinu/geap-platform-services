@@ -218,6 +218,58 @@ def test_the_same_key_and_payload_does_not_double_store(
     assert len(matching) == 1
 
 
+def test_the_same_key_and_payload_returns_the_original_result(
+    client: Any, writer: dict[str, str], idempotency_key: str
+) -> None:
+    """The contract promises the *original result*, not merely that one memory ends up stored.
+
+    Honest limit: a build with no idempotency at all can pass this. Provider consolidation
+    collapses the second identical write onto the same memory and returns the same id, so the
+    two responses match anyway — confirmed by removing the replay lookup and watching this test
+    still pass. A conformance suite is black box and cannot count provider calls.
+
+    What it does catch is a build that returns something *different* on replay: a new id, a
+    changed outcome, a reordered result set. The discriminating test lives in the pattern's own
+    suite, where the provider calls can be counted.
+    """
+    body = {"value": "ReplayBrand", "fact": "Prefers ReplayBrand."}
+    first = remember(client, writer, idempotency_key, **body)
+    second = remember(client, writer, idempotency_key, **body)
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+
+
+def test_the_same_key_with_a_different_payload_is_refused(
+    client: Any, writer: dict[str, str], idempotency_key: str
+) -> None:
+    """A key identifies one logical write. Reusing it for another must not silently apply."""
+    remember(
+        client, writer, idempotency_key, value="FirstBrand", fact="Prefers FirstBrand."
+    )
+    reused = remember(
+        client,
+        writer,
+        idempotency_key,
+        value="SecondBrand",
+        fact="Prefers SecondBrand.",
+    )
+    assert reused.status_code == 422
+    assert reused.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert reused.json()["retryable"] is False
+
+
+def test_a_different_key_with_the_same_payload_is_a_new_request(
+    client: Any, writer: dict[str, str], idempotency_key: str
+) -> None:
+    """The key is the identity of a write, not the body. A build that deduplicates on the body
+    would silently drop a legitimate repeat."""
+    body = {"value": "RepeatBrand", "fact": "Prefers RepeatBrand."}
+    first = remember(client, writer, idempotency_key, **body)
+    second = remember(client, writer, f"{idempotency_key}-two", **body)
+    assert first.status_code == second.status_code == 200
+    assert second.json()["outcome"] in {"written", "written_unverified", "noop"}
+
+
 # --- scope is never supplied by the caller -----------------------------------------------------------
 
 

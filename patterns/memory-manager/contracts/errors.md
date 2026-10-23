@@ -42,7 +42,7 @@ treat governance as an outage. Check `results`, not just the status.
 | `400` | `MALFORMED_REQUEST` | Does not match the schema. | No |
 | `400` | `TOO_MANY_FACTS` | More than five facts. **A hard provider limit**, verified live — `GenerateMemories` accepts five per request. | No — split the call |
 | `400` | `IDEMPOTENCY_KEY_MISSING` | The header is required on `remember`. | No |
-| `422` | `IDEMPOTENCY_KEY_REUSED` | Same key, **different** payload. | No — use a new key |
+| `422` | `IDEMPOTENCY_KEY_REUSED` | Same key, **different** payload, from the same caller for the same end user. Keys are namespaced per caller and scope, so two end users choosing the same string never collide. | No — use a new key |
 | `401` | `UNAUTHENTICATED` | No token. | No |
 | `401` | `TOKEN_INVALID` | Token failed verification against the configured issuer and JWKS. | No |
 | `403` | `CALLER_NOT_REGISTERED` | The token is valid but the caller is not a registered agent for this domain. | No |
@@ -80,3 +80,22 @@ Per security rule **S-4**:
 An error carries a **code**, a message free of payload content, and the **correlation ID**. Keep the
 correlation ID — it is the only thing that lets the domain trace a request, and the one thing worth
 quoting in a defect report.
+
+## The limit of the idempotency guarantee
+
+A replay is recognised **by the instance that served the original request**. A domain runs several
+instances; session affinity makes a retry likely to return to the same one, and provider
+consolidation collapses an identical fact that reaches another, so a duplicate is normally
+harmless rather than invisible.
+
+It is not a distributed guarantee, and nothing here pretends otherwise. A shared idempotency
+store would make it one, at the cost of a managed service in every domain's deployment; 001
+weighed that and declined for v0.1.0. The residual is recorded in that design with an expiry.
+
+Two consequences worth stating plainly:
+
+* Only **completed** outcomes are recorded. A `429` or a `503` is never cached, so retrying the
+  same key after a transient failure is correct and will be attempted properly.
+* A recorded response outlives a configuration change. Tighten the classifier and a fact refused
+  under the new rules still replays its earlier result until the entry expires — by default,
+  fifteen minutes.

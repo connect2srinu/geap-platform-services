@@ -233,6 +233,27 @@
           "description": "DEBUG does not enable payload logging. The prohibited-field list in security rule S-4 is absolute at every level."
         }
       }
+    },
+    "idempotency": {
+      "type": "object",
+      "description": "The per-instance replay cache behind the Idempotency-Key contract. Both bounds have defaults, so a domain that configures nothing still gets the behaviour. The guarantee holds within one instance; across instances it rests on session affinity and provider consolidation.",
+      "additionalProperties": false,
+      "properties": {
+        "retentionSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "default": 900,
+          "description": "How long a key is remembered. Longer than any plausible client retry budget, short enough to bound memory. A cached response also makes a policy change invisible for this long: a fact refused under a tightened classifier still replays its earlier result until the entry expires."
+        },
+        "maxEntries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 10000,
+          "description": "A hard ceiling independent of expiry. Needed because a burst of unique keys arrives faster than anything ages out."
+        }
+      }
     }
   }
 }

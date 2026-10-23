@@ -27,7 +27,10 @@ from memory_manager.extensions import (  # noqa: E402
 from memory_manager.api.auth import IdentityConfig, LocalHeaderVerifier  # noqa: E402
 from memory_manager.api.main import Caller, ConfigurationError, Deployment, create_app  # noqa: E402
 from memory_manager.observability import WriteBudget  # noqa: E402
-from memory_manager.providers import FakeMemoryBank  # noqa: E402
+from memory_manager.providers import (  # noqa: E402
+    FakeMemoryBank,
+    ProviderUnavailable,
+)
 
 TOPICS = {
     "preferred_brands": Topic(
@@ -609,3 +612,162 @@ def test_recall_is_not_charged_to_the_write_budget() -> None:
     for _ in range(5):
         read = c.get("/v1/memories", headers=HEADERS)
         assert read.status_code == 200
+
+
+# --- idempotency ----------------------------------------------------------------------
+#
+# The contract has required an Idempotency-Key since v0.1.0 and promised what it buys. Until 012
+# the service checked the header was present and discarded it.
+
+
+def write_counting_bank() -> tuple[FakeMemoryBank, list[int]]:
+    """A bank that records how many times it was actually asked to write."""
+    bank = FakeMemoryBank()
+    calls: list[int] = []
+    inner = bank.write
+
+    def counting(facts: list[str], scope: object) -> object:
+        calls.append(len(facts))
+        return inner(facts, scope)  # type: ignore[arg-type]
+
+    bank.write = counting  # type: ignore[method-assign]
+    return bank, calls
+
+
+def test_replaying_a_key_with_the_same_body_does_not_write_again() -> None:
+    """Counted at the provider, not inferred from the response: a response can look right
+    while the write happened twice, which is the whole failure being prevented."""
+    bank, calls = write_counting_bank()
+    c = client(bank=bank)
+    payload = {"facts": [fact()]}
+
+    first = c.post("/v1/memories", json=payload, headers=HEADERS)
+    second = c.post("/v1/memories", json=payload, headers=HEADERS)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert calls == [1], f"the provider was called {len(calls)} times"
+
+
+def test_a_replay_returns_the_original_memory_id() -> None:
+    c = client()
+    payload = {"facts": [fact()]}
+    first = c.post("/v1/memories", json=payload, headers=HEADERS)
+    second = c.post("/v1/memories", json=payload, headers=HEADERS)
+    assert (
+        first.json()["results"][0]["memoryId"]
+        == second.json()["results"][0]["memoryId"]
+    )
+
+
+def test_the_same_key_with_a_different_body_is_refused() -> None:
+    c = client()
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    reused = c.post(
+        "/v1/memories", json={"facts": [fact(value="Meadowlark")]}, headers=HEADERS
+    )
+    assert reused.status_code == 422
+    assert reused.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert reused.json()["retryable"] is False
+
+
+def test_a_refused_key_did_not_write() -> None:
+    bank, calls = write_counting_bank()
+    c = client(bank=bank)
+    c.post("/v1/memories", json={"facts": [fact()]}, headers=HEADERS)
+    c.post("/v1/memories", json={"facts": [fact(value="Other")]}, headers=HEADERS)
+    assert calls == [1]
+
+
+def test_different_keys_with_the_same_body_both_write() -> None:
+    """The key is the identity of a write, not the body."""
+    bank, calls = write_counting_bank()
+    c = client(bank=bank)
+    payload = {"facts": [fact()]}
+    c.post("/v1/memories", json=payload, headers=HEADERS)
+    c.post(
+        "/v1/memories",
+        json=payload,
+        headers={**HEADERS, "Idempotency-Key": "key-0000002"},
+    )
+    assert calls == [1, 1]
+
+
+def test_a_replay_carries_its_own_correlation_id() -> None:
+    """A replay is a distinct request. Echoing the recorded id would break tracing."""
+    c = client()
+    payload = {"facts": [fact()]}
+    c.post(
+        "/v1/memories", json=payload, headers={**HEADERS, "X-Correlation-Id": "first"}
+    )
+    replay = c.post(
+        "/v1/memories", json=payload, headers={**HEADERS, "X-Correlation-Id": "second"}
+    )
+    assert replay.headers["X-Correlation-Id"] == "second"
+
+
+def test_a_noop_is_recorded_too() -> None:
+    """A refusal is a completed outcome; replaying it must not re-run the classifier."""
+    calls: list[str] = []
+
+    class CountingClassifier:
+        def classify(self, f: object, caller: object) -> object:
+            calls.append("called")
+            return AllowAll().classify(f, caller)  # type: ignore[arg-type]
+
+    c = client(classifier=CountingClassifier())
+    payload = {"facts": [fact(topic="health_conditions")]}
+    first = c.post("/v1/memories", json=payload, headers=HEADERS)
+    second = c.post("/v1/memories", json=payload, headers=HEADERS)
+    assert first.json()["outcome"] == second.json()["outcome"] == "noop"
+    assert first.json() == second.json()
+
+
+def test_a_provider_failure_is_not_recorded_so_a_retry_still_works() -> None:
+    """Caching a transient failure turns a short outage into a permanent one for that key."""
+
+    class FailThenSucceed(FakeMemoryBank):
+        def __init__(self) -> None:
+            super().__init__()
+            self.attempts = 0
+
+        def write(self, facts: list[str], scope: object) -> object:
+            self.attempts += 1
+            if self.attempts == 1:
+                raise ProviderUnavailable("the provider is unavailable")
+            return super().write(facts, scope)  # type: ignore[arg-type]
+
+    bank = FailThenSucceed()
+    c = client(bank=bank)
+    payload = {"facts": [fact()]}
+
+    failed = c.post("/v1/memories", json=payload, headers=HEADERS)
+    assert failed.status_code == 503
+    assert failed.json()["retryable"] is True
+
+    retried = c.post("/v1/memories", json=payload, headers=HEADERS)
+    assert retried.status_code == 200, "the same key after a 503 must be able to retry"
+    assert retried.json()["outcome"] == "written"
+
+
+def test_two_end_users_may_share_a_key_without_seeing_each_other(  # S-8
+) -> None:
+    """An idempotency key is a string the client chose. Two end users can pick the same one."""
+    c = client()
+    payload = {"facts": [fact()]}
+    alice = c.post(
+        "/v1/memories",
+        json=payload,
+        headers={**HEADERS, "Authorization": "Bearer alice"},
+    )
+    bob = c.post(
+        "/v1/memories",
+        json=payload,
+        headers={**HEADERS, "Authorization": "Bearer bob"},
+    )
+    assert alice.status_code == 200
+    # Same key, same body, different end user: not a replay, and not Alice's memory id.
+    assert bob.status_code == 200
+    assert (
+        bob.json()["results"][0]["memoryId"] != alice.json()["results"][0]["memoryId"]
+    )

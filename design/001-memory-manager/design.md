@@ -144,7 +144,7 @@ not possible — TTL is a bank-level setting and each domain has one bank. Defer
 | Risk | Impact | What we do about it |
 |---|---|---|
 | Consolidation can rewrite a fact after the gate | Prohibited content briefly in the bank | Read-back re-classification; rollback else delete; recall-time re-check. **Residual window accepted — expires 2027-04-22** |
-| No cross-instance idempotency | A duplicate on another instance writes twice | Provider consolidation dedups identical facts (**verified**); per-instance replay cache; session affinity. **Accepted — expires 2027-04-22** |
+| No cross-instance idempotency | A duplicate on another instance writes twice | Provider consolidation dedups identical facts (**verified**); session affinity; per-instance replay cache — **built in 012, 2026-10-23**, so all three compensations are now in place. **Residual accepted — expires 2027-04-22** |
 | Shared project quota across domains | One domain can starve another | Per-domain budget divided by `max_instances`; refuse to start without it; platform quota alert. **Accepted — expires 2027-04-22** |
 | SDK pager broken for `retrieve` | `recall` cannot page | **OPEN** — test other 2.x releases first |
 | Memory Bank CMEK support unknown | Encryption-at-rest key control undetermined | **OPEN** — needs Cloud KMS enabled |
