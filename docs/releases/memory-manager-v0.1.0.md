@@ -73,7 +73,7 @@ oversight that can be waved through.
 |---|---|---|
 | 1 | **`requiredAuditEvents` is declared and not emitted.** The manifest names seven audit events; none is emitted. `Deployment` has no `AuditSink`, so even the two undeclared events in `verify_write` go to a null sink in any real deployment. Security rule S-7 is unimplemented. | the unmerged branch `design/015-audit-events-that-exist`; its intent awaits approval |
 | 2 | **`metadata.status` is `proposed`.** `release.yml` refuses to publish a pattern whose design is not approved. Moving it to `alpha` is a governance act. | a human, in `patterns/memory-manager/pattern.yaml` |
-| 3 | **The `release` GitHub environment does not exist.** `release.yml` names `environment: release` and its comment calls the required reviewers "the second human gate". The repository has no environments configured, so that gate currently imposes nothing. | a repository administrator — see `docs/operations/repository-administration.md` |
+| 3 | ~~The `release` GitHub environment does not exist.~~ **Cleared 2026-10-24.** The environment now exists with one required reviewer. Secret scanning, push protection and Dependabot were enabled at the same time, and `Domain rehearsal` became a required check. | done |
 | 4 | **`metadata.maintainer.contact` is `<team-contact-placeholder>`.** An adopting domain has no one to contact. | a human, in `patterns/memory-manager/pattern.yaml` |
 
 ## Recommendation

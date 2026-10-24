@@ -10,16 +10,22 @@ written down.
 
 ## Current state
 
-Checked 2026-10-23 with `gh api`. Re-check rather than trust this table; it ages.
+Checked and changed 2026-10-24 with `gh api`. Re-check rather than trust this table; it ages.
 
 | Setting | State | Matters because |
 |---|---|---|
-| `release` environment with required reviewers | **not configured** — the repository has no environments | `release.yml` calls this the second human gate before publishing |
-| Required status checks on `main` | configured, 9 checks — but **`Domain rehearsal` is not one of them** | the rehearsal exists to stop the onboarding path rotting; if it is not required, it can fail and the pull request still merges |
-| Secret scanning | **disabled** | `security.yml` says in a comment that an administrator enables it and that the gitleaks job does not replace it |
-| Push protection | **disabled** | stops a credential reaching the remote at all, rather than reporting it afterwards |
-| Dependabot security updates | **disabled** | the weekly `Dependency vulnerabilities` job reports; Dependabot is what opens the fix |
+| `release` environment with required reviewers | **configured** — one reviewer, `connect2srinu` | `release.yml` calls this the second human gate before publishing |
+| Required status checks on `main` | **10 checks**, `Domain rehearsal` now among them | the rehearsal exists to stop the onboarding path rotting; if it is not required, it can fail and the pull request still merges |
+| Secret scanning | **enabled** | `security.yml` says in a comment that an administrator enables it and that the gitleaks job does not replace it |
+| Push protection | **enabled** | stops a credential reaching the remote at all, rather than reporting it afterwards |
+| Dependabot security updates | **enabled** | the weekly `Dependency vulnerabilities` job reports; Dependabot is what opens the fix |
+| Non-provider patterns, validity checks | **disabled** — the API accepted the change twice and still reports disabled | they need GitHub Advanced Security, which this repository does not have |
 | Repository visibility | **public** | the settings above are free for a public repository, and a leaked credential in a public repository is leaked the moment it is pushed |
+
+**The one reviewer on the `release` environment is also the person who tags and dispatches.**
+That makes the gate a deliberate pause, not an independent review. Add a second reviewer, and
+turn on *Prevent self-review*, as soon as there is somebody to add — until then, enabling it
+would lock the only reviewer out of their own release.
 
 ## 1. The `release` environment
 
@@ -41,20 +47,27 @@ dispatching and approving is one gate wearing three hats.
 
 ## 2. Required status checks on `main`
 
-The nine configured today:
+The ten required today:
 
 ```
-Lint and format · Type check · Unit tests · Manifest and boundary · Contract specifications
-Dependency vulnerabilities · Secret scanning · Infrastructure policy scan · Format and validate
+Lint and format · Type check · Unit tests · Domain rehearsal · Manifest and boundary
+Contract specifications · Dependency vulnerabilities · Secret scanning
+Infrastructure policy scan · Format and validate
 ```
 
-**`Domain rehearsal` is missing.** It is the job that builds a domain project from the template,
-vendors the pattern, boots it and runs the conformance suite — the check that exists because
-seven onboarding defects reached `main` together once. Add it:
+`Domain rehearsal` was added on 2026-10-24. It is the job that builds a domain project from the
+template, vendors the pattern, boots it and runs the conformance suite — the check that exists
+because seven onboarding defects reached `main` together once, and for its first months it was
+not required, so it could fail without blocking a merge.
 
-Settings → Branches → the `main` rule → Require status checks to pass → add `Domain rehearsal`.
+To add another, without rewriting the rest of the protection rule:
 
-A check only becomes selectable after it has reported on at least one pull request.
+```bash
+echo '{"contexts":["<job name>"]}' | gh api -X POST \
+  repos/:owner/:repo/branches/main/protection/required_status_checks/contexts --input -
+```
+
+A check only becomes selectable in the UI after it has reported on at least one pull request.
 
 ## 3. Secret scanning and push protection
 
