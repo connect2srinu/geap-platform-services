@@ -42,12 +42,17 @@ exactly that, emit it, and make the two impossible to drift apart.
   `verify_write`.
 - Emitting the events this component is genuinely responsible for, each carrying a correlation ID
   and identifiers only.
+- **An audit event for `recall`** (decided 2026-10-24), so a read of someone's memory leaves a
+  trail. This goes beyond what S-7 names.
 - Correcting `pattern.yaml` to declare what is emitted, including removing what this component
   cannot emit and adding the two real events that were never declared.
 - A manifest-versus-code check in **both** directions, modelled on the metrics check in
   `tests/test_observability.py`: a declared event that is emitted nowhere, and an emitted event
   that is undeclared, both fail the build.
 - Emitting the replay event 012 left open.
+- `pattern.yaml`: `metadata.status` from `proposed` to `alpha`, and a real
+  `metadata.maintainer.contact` in place of the placeholder. Both are release blockers that only
+  make sense once the manifest stops overclaiming, so they land here rather than separately.
 
 ## Not in scope
 
@@ -57,7 +62,6 @@ exactly that, emit it, and make the two impossible to drift apart.
 - Role management. If `role_grant` and `role_revocation` belong to something, that something is
   not this pattern, and deciding where they live is a separate question.
 - Any change to the API contract, the reason codes, or an extension point.
-- Retrofitting audit to `recall` if it turns out S-7 does not require it — see the open question.
 
 ## How we'll know it works
 
@@ -72,15 +76,25 @@ exactly that, emit it, and make the two impossible to drift apart.
 7. A test asserts no audit field matches the prohibited-field list, against emitted records
    rather than against the source.
 8. The replay event from 012 is emitted, closing that task.
+9. A `recall` emits an audit event naming the caller, the scope owner by pseudonym and how many
+   values were served — and no fact text.
+10. `role_grant` and `role_revocation` appear nowhere in `pattern.yaml`, and the both-directions
+    check would fail if either were added back without an emitting call.
 
-## Open questions
+## Decisions
 
-| Question | Who decides |
+Taken 2026-10-24 by Srinivasa reddy, instructed in session.
+
+| Question | Decision |
 |---|---|
-| Does S-7 require an audit event for `recall`? It says "write, denial and deletion", so a read is not named — but a read of someone's memory is exactly what an investigator would want a trail of. Adding it is cheap; the argument against is volume. | Platform architect |
-| `configuration_change`: this service loads configuration at startup and never changes it at runtime, so the only honest event is "started with this configuration". Keep it under that meaning, or drop it as not this component's? | Platform architect |
-| `role_grant` and `role_revocation`: remove from this manifest. Does anything else in the platform own them, or do they leave the catalogue entirely? | Platform lead |
-| `ASSUMPTION` — the existing `memory_remediation` and `memory_write_unverified` events are correct and worth keeping; they just were never declared. Not yet reviewed against what an investigator needs. | — |
+| Does S-7 require an audit event for `recall`? | **Yes, audit reads.** Beyond what S-7 names, accepting the extra volume, because a read of someone's memory is what an investigator would want a trail of. |
+| `role_grant`, `role_revocation` | **Removed from this manifest.** The component never grants or revokes a role, so declaring them claims coverage it cannot deliver. Where they belong, if anywhere, is not this pattern's question. |
+| `metadata.status`, `maintainer.contact` | Changed in **this branch**, so one pull request clears the audit gap and the two manifest blockers together. |
+| `configuration_change` | **Kept, as "started with this configuration".** This service reads configuration at startup and never changes it at runtime, so that is the only honest meaning — and it is the event that tells an investigator which policy was in force. |
+
+`ASSUMPTION`, unchanged: the existing `memory_remediation` and `memory_write_unverified` events
+are correct and worth keeping; they were simply never declared. Not yet reviewed against what an
+investigator needs.
 
 ## Approval
 
