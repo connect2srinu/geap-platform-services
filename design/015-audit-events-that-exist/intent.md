@@ -1,7 +1,9 @@
 ---
 artifact: intent
 feature: 015-audit-events-that-exist
-status: draft
+status: approved
+approved_by: Srinivasa reddy
+approved_date: 2026-10-24
 ---
 
 # Audit events that actually exist
@@ -98,4 +100,4 @@ investigator needs.
 
 ## Approval
 
-A human sets `status: approved` with `approved_by` and `approved_date` (ISO, `YYYY-MM-DD`).
+Approved by Srinivasa reddy, 2026-10-24, instructed in session.

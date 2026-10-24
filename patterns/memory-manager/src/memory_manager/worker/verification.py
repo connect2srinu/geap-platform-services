@@ -27,6 +27,7 @@ from enum import Enum
 from typing import Protocol
 
 from ..extensions import CallerContext, Fact, PiiClassifier
+from ..observability import AuditSink
 
 from ..providers.encoding import decode_fact_text
 from ..providers.memory_bank import MemoryBank, ProviderUnavailable
@@ -62,12 +63,6 @@ class VerificationResult:
 
 class MetricSink(Protocol):
     def increment(self, metric: str, **labels: str) -> None: ...
-
-
-class AuditSink(Protocol):
-    """Audit events carry identifiers and decisions, never values (security rule S-4)."""
-
-    def emit(self, event: str, **fields: str) -> None: ...
 
 
 class _Null:
@@ -136,6 +131,13 @@ def verify_write(
         except Exception:  # noqa: BLE001 - domain code; an undecided classifier is not an approval
             unverified.append(name)
             sink.increment("extension_errors", extension_id="pii-classifier")
+            log.emit(
+                "exception_invoked",
+                correlation_id=caller.correlation_id,
+                caller_id=caller.caller_id,
+                domain=caller.domain,
+                extension="pii-classifier",
+            )
             sink.increment("verification_outcomes", outcome="classifier_failed")
             continue
 
@@ -226,6 +228,16 @@ def _remediate(
         action = Remediation.FAILED
 
     sink.increment("remediations", action=action.value, reason=reason)
+    if action is Remediation.DELETED:
+        # S-7 names deletion in its own right, so it gets its own event rather than being a
+        # field on the remediation one. An investigator searching for deletions finds them.
+        log.emit(
+            "memory_deletion",
+            correlation_id=caller.correlation_id,
+            caller_id=caller.caller_id,
+            domain=caller.domain,
+            reason=reason,
+        )
     log.emit(
         "memory_remediation",
         correlation_id=caller.correlation_id,

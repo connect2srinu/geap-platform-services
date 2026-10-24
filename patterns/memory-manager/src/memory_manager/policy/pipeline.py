@@ -30,6 +30,7 @@ from ..extensions import (
     TopicField,
 )
 
+from ..observability import AuditSink, NullAudit
 from .reasons import ReasonCode
 
 
@@ -89,12 +90,14 @@ class ValidationPipeline:
         policy: PolicyProvider,
         resolver: EntityResolver | None = None,
         metrics: MetricSink | None = None,
+        audit: AuditSink | None = None,
     ) -> None:
         self._topics = topics
         self._classifier = classifier
         self._policy = policy
         self._resolver = resolver
         self._metrics = metrics or _NullMetrics()
+        self._audit = audit or NullAudit()
 
     # -- per-fact ----------------------------------------------------------------------
 
@@ -143,6 +146,7 @@ class ValidationPipeline:
             decision = self._policy.decide(caller, "remember", fact.topic)
         except Exception:  # noqa: BLE001 - domain code; any failure denies
             self._metrics.increment("extension_errors", extension_id="policy-provider")
+            self._audit_extension_failure(caller, "policy-provider")
             return refuse(ReasonCode.TOPIC_NOT_APPROVED)
         if not decision.allowed or fact.topic in decision.restricted_topics:
             return refuse(ReasonCode.TOPIC_NOT_APPROVED)
@@ -153,6 +157,7 @@ class ValidationPipeline:
             verdict = self._classifier.classify(fact, caller)
         except Exception:  # noqa: BLE001 - domain code; any failure denies
             self._metrics.increment("extension_errors", extension_id="pii-classifier")
+            self._audit_extension_failure(caller, "pii-classifier")
             return refuse(ReasonCode.CLASSIFIER_ERROR)
         if not verdict.allowed:
             return refuse(ReasonCode.VALUE_PROHIBITED)
@@ -200,11 +205,27 @@ class ValidationPipeline:
             resolved = self._resolver.resolve(fact, caller)
         except Exception:  # noqa: BLE001 - domain code; any failure skips
             self._metrics.increment("extension_errors", extension_id="entity-resolver")
+            self._audit_extension_failure(caller, "entity-resolver")
             return fact
         if resolved.topic != fact.topic or resolved.basis != fact.basis:
             self._metrics.increment("extension_errors", extension_id="entity-resolver")
+            self._audit_extension_failure(caller, "entity-resolver")
             return fact
         return resolved
+
+    def _audit_extension_failure(self, caller: CallerContext, extension: str) -> None:
+        """A domain extension failed. The denial is already decided; this records who and which.
+
+        The exception itself is never carried: a domain's traceback can hold the fact it was
+        judging (S-4).
+        """
+        self._audit.emit(
+            "exception_invoked",
+            correlation_id=caller.correlation_id,
+            caller_id=caller.caller_id,
+            domain=caller.domain,
+            extension=extension,
+        )
 
 
 def validate_facts(
@@ -216,6 +237,7 @@ def validate_facts(
     policy: PolicyProvider,
     resolver: EntityResolver | None = None,
     metrics: MetricSink | None = None,
+    audit: AuditSink | None = None,
 ) -> list[FactOutcome]:
     """Validate a batch, preserving submission order so each outcome keeps its index."""
     pipeline = ValidationPipeline(
@@ -224,5 +246,6 @@ def validate_facts(
         policy=policy,
         resolver=resolver,
         metrics=metrics,
+        audit=audit,
     )
     return [pipeline.validate(i, fact, caller) for i, fact in enumerate(facts)]
