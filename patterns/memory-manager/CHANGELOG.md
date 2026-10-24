@@ -13,8 +13,9 @@ Nothing yet.
 
 ## [0.1.0] — prepared, not published
 
-The first adoptable version. Nothing is released until a human tags it and dispatches
-`release.yml`; see `docs/releases/memory-manager-v0.1.0.md` for what is still outstanding.
+The first adoptable version, `status: alpha`. Nothing is released until a human tags it and
+dispatches `release.yml`; see `docs/releases/memory-manager-v0.1.0.md` for what is still
+outstanding.
 
 **Not breaking.** There is no previous version, so there is nothing to migrate from.
 
@@ -61,8 +62,13 @@ The first adoptable version. Nothing is released until a human tags it and dispa
   derived server-side from the verified subject alone. A request body carrying a scope is
   refused.
 - The local header verifier is refused outside a local environment at two independent points.
-- **`requiredAuditEvents` is declared and not emitted.** The manifest names seven audit events;
-  the code emits none of them. `verify_write` is the only component that takes an `AuditSink`,
-  `Deployment` has no sink to give it, and the two events it would emit are not among the seven
-  declared. Security rule S-7 is therefore unimplemented. This is a **release blocker**, tracked
-  on the unmerged branch `design/015-audit-events-that-exist`.
+- Nine audit events, emitted and declared: `memory_write`, `memory_recall`, `memory_deletion`,
+  `memory_remediation`, `memory_write_unverified`, `policy_denial`, `configuration_change`,
+  `exception_invoked` and `idempotency_replay`. Each carries a correlation ID, identifiers and
+  decisions — never a value, and never the raw end-user subject (S-7, S-4).
+- **`role_grant` and `role_revocation` were removed from `requiredAuditEvents`.** This service
+  never grants or revokes a role, so declaring them asserted coverage it could not deliver. A
+  test now compares the manifest against the code in both directions, so a declared event that
+  nothing emits, and an emitted event nothing declares, each fail the build.
+- `recall` emits an audit event, which goes beyond what S-7 names. A read of someone's memory is
+  what an investigator would want a trail of.

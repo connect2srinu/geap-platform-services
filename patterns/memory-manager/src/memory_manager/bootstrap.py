@@ -17,6 +17,7 @@ Three rules shape it:
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -37,7 +38,7 @@ from .extensions import (
 from .api.auth import IdentityConfig, JwtSubjectVerifier, LocalHeaderVerifier
 from .api.main import Caller, ConfigurationError, Deployment
 from .api.replay import ReplayCache
-from .observability import LoggingMetrics, WriteBudget
+from .observability import LoggingAudit, LoggingMetrics, WriteBudget
 from .providers import FakeMemoryBank, MemoryBank
 
 #: Package data, not a repository path. The schema is the *pattern's* artifact — the domain's
@@ -145,6 +146,12 @@ def _bank(domain: str, metrics: LoggingMetrics, *, local: bool) -> MemoryBank:
     )
 
 
+def _config_digest(config: dict[str, Any]) -> str:
+    """A stable fingerprint of the configuration this instance started with."""
+    canonical = json.dumps(config, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
 def build_deployment(
     config: dict[str, Any], *, environment: str | None = None
 ) -> Deployment:
@@ -153,6 +160,7 @@ def build_deployment(
     local = env.lower() in {"local", "dev-local"}
     domain = config["domain"]["name"]
     metrics = LoggingMetrics(domain=domain)
+    audit = LoggingAudit(domain=domain)
 
     extensions = config.get("extensions") or {}
     topic_provider: Any = (
@@ -205,6 +213,22 @@ def build_deployment(
         LocalHeaderVerifier(environment=env) if local else JwtSubjectVerifier(identity)
     )
 
+    # This service reads configuration at startup and never changes it at runtime, so "started
+    # with this configuration" is the only honest meaning for `configuration_change` — and it is
+    # the record that tells an investigator which policy was in force at the time. The digest
+    # makes two deployments comparable without reproducing the file; configuration carries no
+    # secret values, which the schema enforces, so it is not an oracle for one.
+    audit.emit(
+        "configuration_change",
+        domain=domain,
+        environment=env,
+        config_digest=_config_digest(config),
+        topics=str(len(topics)),
+        callers=str(len(config["callers"])),
+        pii_classifier=str(extensions.get("piiClassifier") or "default:deny-all"),
+        policy_provider=str(extensions.get("policyProvider") or "default:deny-all"),
+    )
+
     return Deployment(
         domain=domain,
         topics=topics,
@@ -215,6 +239,7 @@ def build_deployment(
         identity=identity,
         verifier=verifier,
         metrics=metrics,
+        audit=audit,
         budget=budget,
         replay=replay,
     )

@@ -21,7 +21,14 @@ from ..extensions import CallerContext, Fact, PiiClassifier, PolicyProvider, Top
 from fastapi import FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 
-from ..observability import BudgetExhausted, MetricSink, NullMetrics, WriteBudget
+from ..observability import (
+    AuditSink,
+    BudgetExhausted,
+    MetricSink,
+    NullAudit,
+    NullMetrics,
+    WriteBudget,
+)
 from ..policy import ReasonCode, validate_facts
 from ..providers import MemoryBank, ProviderUnavailable, encode_fact_text
 from ..providers.encoding import decode_fact_text
@@ -70,6 +77,9 @@ class Deployment:
     identity: IdentityConfig
     verifier: SubjectVerifier
     metrics: MetricSink = field(default_factory=NullMetrics)
+    #: Where this deployment records what it did. `bootstrap` always supplies a real sink; the
+    #: null default exists so a directly constructed Deployment still runs in a test.
+    audit: AuditSink = field(default_factory=NullAudit)
     #: One instance's share of the domain's write budget. Required: a deployment with no budget
     #: cannot bound its consumption of the shared project quota.
     budget: WriteBudget | None = None
@@ -152,6 +162,16 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             return resolved
         caller, subject = resolved
         if "remember" not in caller.operations:
+            # No scope yet, so no pseudonym to name. The caller and the reason are what an
+            # investigator needs here, and the raw subject is never emitted (S-4).
+            deployment.audit.emit(
+                "policy_denial",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                operation="remember",
+                reason="CALLER_NOT_PERMITTED",
+            )
             done("refused")
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
@@ -167,11 +187,27 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             deployment.metrics.increment(
                 "tool_invocations", operation="remember", decision="key_reused"
             )
+            deployment.audit.emit(
+                "policy_denial",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                subject_pseudonym=context.subject_pseudonym,
+                operation="remember",
+                reason="IDEMPOTENCY_KEY_REUSED",
+            )
             done("refused")
             return error_response(ErrorCode.IDEMPOTENCY_KEY_REUSED, correlation_id)
         if recorded is not None:
             # The recorded body, but this request's correlation id: a replay is a distinct
             # request and has to be traceable as one.
+            deployment.audit.emit(
+                "idempotency_replay",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                subject_pseudonym=context.subject_pseudonym,
+            )
             done("replayed")
             return JSONResponse(
                 status_code=200,
@@ -190,6 +226,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             classifier=deployment.classifier,
             policy=deployment.policy,
             metrics=deployment.metrics,
+            audit=deployment.audit,
         )
 
         approved = [o for o in outcomes if o.accepted and o.fact is not None]
@@ -199,6 +236,15 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         ]
 
         if not approved:
+            deployment.audit.emit(
+                "policy_denial",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                subject_pseudonym=context.subject_pseudonym,
+                operation="remember",
+                reason=",".join(sorted({o.reason.value for o in outcomes})),
+            )
             done("noop")
             return _recorded(
                 deployment,
@@ -218,6 +264,15 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             deployment.budget.take(len(texts))
         except BudgetExhausted as exhausted:
             deployment.metrics.increment("quota_budget_exhausted", operation="remember")
+            deployment.audit.emit(
+                "policy_denial",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                subject_pseudonym=context.subject_pseudonym,
+                operation="remember",
+                reason="RATE_LIMITED",
+            )
             done("rate_limited")
             return error_response(
                 ErrorCode.RATE_LIMITED,
@@ -239,6 +294,7 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             bank=deployment.bank,
             classifier=deployment.classifier,
             metrics=deployment.metrics,
+            audit=deployment.audit,
         )
 
         names = list(written.memory_names)
@@ -256,6 +312,15 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
         else:
             api_outcome = "written"
 
+        deployment.audit.emit(
+            "memory_write",
+            correlation_id=correlation_id,
+            caller_id=caller.caller_id,
+            domain=deployment.domain,
+            subject_pseudonym=context.subject_pseudonym,
+            stored=str(len(approved)),
+            outcome=api_outcome,
+        )
         done(api_outcome)
         return _recorded(
             deployment,
@@ -295,6 +360,14 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
             return resolved
         caller, subject = resolved
         if "recall" not in caller.operations:
+            deployment.audit.emit(
+                "policy_denial",
+                correlation_id=correlation_id,
+                caller_id=caller.caller_id,
+                domain=deployment.domain,
+                operation="recall",
+                reason="CALLER_NOT_PERMITTED",
+            )
             done("refused")
             return error_response(ErrorCode.CALLER_NOT_PERMITTED, correlation_id)
 
@@ -345,6 +418,18 @@ def create_app(deployment: Deployment, *, environment: str | None = None) -> Fas
 
         if withheld:
             deployment.metrics.increment("recall_withheld", count=str(withheld))
+        # Beyond what S-7 names. A read of someone's memory is what an investigator would want a
+        # trail of, and the counts say how much was served without saying what.
+        deployment.audit.emit(
+            "memory_recall",
+            correlation_id=correlation_id,
+            caller_id=caller.caller_id,
+            domain=deployment.domain,
+            subject_pseudonym=context.subject_pseudonym,
+            served=str(len(values)),
+            withheld=str(withheld),
+            topic=topic or "",
+        )
         done("served")
         return _ok(RecallResponse(values=values, withheld=withheld), correlation_id)
 

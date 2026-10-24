@@ -66,32 +66,38 @@ Neither is on the request path. CMEK is set once, at bank creation, through
 
 ## Blockers
 
-These must be cleared before the tag. Each is a human act or a tracked piece of work, not an
-oversight that can be waved through.
+All four are cleared. Each was a human act or tracked work, not an oversight waved through.
 
-| # | Blocker | Who clears it |
+| # | Blocker | Cleared |
 |---|---|---|
-| 1 | **`requiredAuditEvents` is declared and not emitted.** The manifest names seven audit events; none is emitted. `Deployment` has no `AuditSink`, so even the two undeclared events in `verify_write` go to a null sink in any real deployment. Security rule S-7 is unimplemented. | the unmerged branch `design/015-audit-events-that-exist`; its intent awaits approval |
-| 2 | **`metadata.status` is `proposed`.** `release.yml` refuses to publish a pattern whose design is not approved. Moving it to `alpha` is a governance act. | a human, in `patterns/memory-manager/pattern.yaml` |
-| 3 | ~~The `release` GitHub environment does not exist.~~ **Cleared 2026-10-24.** The environment now exists with one required reviewer. Secret scanning, push protection and Dependabot were enabled at the same time, and `Domain rehearsal` became a required check. | done |
-| 4 | **`metadata.maintainer.contact` is `<team-contact-placeholder>`.** An adopting domain has no one to contact. | a human, in `patterns/memory-manager/pattern.yaml` |
+| 1 | **`requiredAuditEvents` declared seven events and the code emitted none.** `Deployment` had no `AuditSink`, so even the two undeclared events in `verify_write` reached a null sink in any real deployment. S-7 was unimplemented. | 2026-10-24, `design/015-audit-events-that-exist`. Nine events now emitted and declared; `role_grant` and `role_revocation` removed because this service never grants or revokes a role; a both-directions test fails the build if either side drifts. |
+| 2 | **`metadata.status` was `proposed`**, which `release.yml` refuses. | 2026-10-24, now `alpha`. |
+| 3 | **The `release` GitHub environment did not exist**, so the second human gate imposed nothing. | 2026-10-24. Created with one required reviewer. Secret scanning, push protection and Dependabot were enabled at the same time, and `Domain rehearsal` became a required status check. |
+| 4 | **`metadata.maintainer.contact` was a placeholder.** | 2026-10-24, now a real neutral address. |
+
+**One caveat on blocker 3.** The single reviewer on the `release` environment is also the person
+who tags and dispatches, so the gate is a deliberate pause rather than an independent review.
+See `docs/operations/repository-administration.md`.
 
 ## Recommendation
 
-**Do not tag until blocker 1 is closed.** Publishing a manifest that declares seven audit events
-the code does not emit tells a reviewer the coverage is there when it is not, and a version
-cannot be withdrawn once a domain has consumed it. A manifest that claims less is safer than one
-that overclaims.
+**Ready to tag**, once the pull requests carrying the evidence above are on `main`.
 
-Blockers 2 to 4 are each a single deliberate act and can be done at any point.
+Two things a reviewer should weigh rather than take on trust:
 
-A domain that wants to pilot this before the release does not have to wait: `vendor_pattern.py`
+- **CMEK is unproven**, not merely unverified. Cloud KMS is not enabled on the verification
+  project. It is not on the request path, so it does not block a release, but the pattern cannot
+  claim encryption at rest until a bank is created with a key and the check passes.
+- **`alpha`, not `beta` or `certified`.** The contract may still change. A domain adopting this
+  should expect to take a breaking change, and the known limitations above are real.
+
+A domain that wants to pilot before the release does not have to wait: `vendor_pattern.py`
 accepts a git ref with `unreleased: true` in the lock file. The only thing a release adds to that
 path is verification of the published `SHA256SUMS`.
 
 ## To publish, a human runs
 
-Only after the blockers above are cleared:
+Only once the evidence above is on `main`:
 
 ```bash
 git tag memory-manager/v0.1.0 && git push origin memory-manager/v0.1.0
