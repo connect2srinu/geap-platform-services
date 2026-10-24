@@ -31,7 +31,7 @@ Two contracts follow from this, and both are versioned:
 
 | Pattern | Status | Version | Description |
 |---|---|---|---|
-| [memory-manager](patterns/memory-manager/) | `proposed` — implemented, not yet released | — | Domain-owned governed memory tool API over a managed Memory Bank |
+| [memory-manager](patterns/memory-manager/) | `alpha` — adoptable by a pilot domain; the contract may still change | `0.1.0`, not yet tagged | Domain-owned governed memory tool API over a managed Memory Bank |
 
 ## Repository layout
 
