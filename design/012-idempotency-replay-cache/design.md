@@ -129,8 +129,7 @@ end user another's `memoryId`.
 - [x] Unit tests, including the S-8 two-subject case and the memory bound
 - [x] Conformance coverage for both halves of the promise
 - [x] `errors.md`: state the guarantee and its within-instance limit
-- [ ] `agent-api.md`: the same, **after #11 merges** — this branch predates its rewrite there, and
-      editing the superseded copy would conflict. The only task that must wait
+- [x] `agent-api.md`: the same, done after #11 merged — this branch predated its rewrite there
 - [x] Record the residual in 001's risk table as compensated, not merely accepted
 
 ## Approval

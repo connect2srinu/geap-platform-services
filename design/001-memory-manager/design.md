@@ -67,6 +67,39 @@ Two observations from the run, neither a defect:
   the script had `decide` wrong and every fact came back `TOPIC_NOT_APPROVED`. That is the
   fail-closed rule working, observed by accident against a real provider.
 
+**Live verification of the domain path, 2026-10-23.** `verify_live.py` hand-wires a `Deployment`
+and substitutes `LocalHeaderVerifier`, so three things had never run together against a real bank:
+`bootstrap.build_deployment` reading a domain's `domain-config.yaml`, `asgi:create` under a real
+ASGI server over HTTP, and `JwtSubjectVerifier` resolving a token against a JWKS endpoint. They
+are coupled by one flag — in `bootstrap._bank`, `ENVIRONMENT=local` selects the fake bank *and*
+header authentication, and anything else selects the real bank *and* full token verification — so
+there is no supported way to point the running service at a real bank without an identity provider
+in front of it. `spike/live_domain_rehearsal.py` supplies a throwaway one: a 2048-bit RSA key
+generated per run, held in memory, served from localhost and discarded at exit.
+
+**14/14 checks passed** against `geap-probe-tier1-main`, with a domain configuration carrying its
+own topic vocabulary rather than the template's placeholders: readiness; an unsigned request, a
+token minted for another audience and an expired token each refused; a clean fact written in
+0.94-1.13 s and recalled; a second end user seeing an empty scope; an idempotency key replayed
+returning the recorded response byte for byte; the domain's own classifier refusing an email
+address in the narrative; `TOPIC_RESTRICTED` and `TOPIC_DISABLED` each refused for their own
+reason; a recall-only caller refused a write; a write without an idempotency key refused; and
+nothing prohibited in 50 lines of service log (S-4). Memories written by the run were deleted
+through the adapter afterwards.
+
+Two things worth recording about the checks themselves:
+
+- The restricted-topic check first passed for the wrong reason. The topic was configured
+  `enabled: false` as well as `restricted`, so the refusal came back `TOPIC_DISABLED` and the
+  classification rule was never reached. The topic is now declared, enabled and granted, leaving
+  classification as the only possible reason, and the disabled case is a separate check.
+- **Negative test.** With `resolve_scope` changed to ignore the pseudonym and return a constant
+  `user_id`, exactly one check failed — the second end user saw the first user's memory — and the
+  other thirteen still passed. S-8 is enforced by the code, not by the shape of the test.
+
+What this run does **not** cover: vendoring, which `scripts/domain_rehearsal.py` covers on every
+pull request, and the container image, which a domain builds itself.
+
 **Two hard provider limits found:**
 
 - **Max 5 facts per `GenerateMemories` request.** The contract caps `remember` at **5 facts**.
