@@ -127,9 +127,26 @@ Quote the `correlationId` when you report a problem.
 
 ## Idempotency
 
-Every `remember` needs an `Idempotency-Key`. Replaying the same key with the same body returns the
-original outcome. Reusing it with a **different** body is `IDEMPOTENCY_KEY_REUSED`, not a silent
-overwrite. Generate one per logical write and reuse it across retries of that write.
+Every `remember` needs an `Idempotency-Key`. Generate one per **logical write** and reuse it
+across retries of that write — a fresh key per attempt loses the protection entirely.
+
+| You send | You get |
+|---|---|
+| The same key, the same body | The original response, unchanged. Nothing is written twice |
+| The same key, a **different** body | `422 IDEMPOTENCY_KEY_REUSED`. Not a silent overwrite |
+| A different key, the same body | A new write. The key is the identity, not the body |
+
+Keys are namespaced per caller and per end user, so your choice of key cannot collide with
+another agent's or another user's.
+
+**The limit, stated honestly.** A replay is recognised by the instance that served the original
+request. A service runs several instances; session affinity makes a retry likely to return to the
+same one, and the memory store collapses an identical fact that reaches another. A duplicate is
+therefore normally harmless rather than invisible — but this is not a distributed guarantee, and
+a workflow should not depend on it being one.
+
+A `429` or a `503` is **never** recorded, so retrying the same key after one is correct and will
+be attempted properly.
 
 ## Requesting access
 
